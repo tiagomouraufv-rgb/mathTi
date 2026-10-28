@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.tiago.folhadecalculo'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.tiago.folhadecalculo"
+        minSdk 26
+        targetSdk 36
+        versionCode 13
+        versionName "0.9.2"
+    }
+
+    // assinatura fixa: o APK gerado no notebook ou no GitHub é o mesmo app
+    // (instala por cima sem apagar as folhas)
+    signingConfigs {
+        fixa {
+            storeFile file('assinatura.jks')
+            storePassword 'folhadecalculo'
+            keyAlias 'folha'
+            keyPassword 'folhadecalculo'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.fixa
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.fixa
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    androidResources {
+        // o app web é um único arquivo grande; não comprimir acelera a abertura
+        noCompress 'html'
+    }
+}

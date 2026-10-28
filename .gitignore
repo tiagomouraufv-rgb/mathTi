@@ -1,0 +1,13 @@
+# gerados na compilação
+web/build/node_modules/
+web/dist/
+web/site/
+android/app/src/main/assets/index.html
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+gradle.log
+out/
+.idea/
+*.iml

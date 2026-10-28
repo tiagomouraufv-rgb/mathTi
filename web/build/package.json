@@ -1,0 +1,21 @@
+{
+  "name": "mathti-build",
+  "version": "1.0.0",
+  "description": "Bibliotecas embutidas no MathTi",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "fflate": "0.8.3",
+    "gifenc": "1.0.3",
+    "katex": "0.19.1",
+    "mathjs": "15.2.0",
+    "mp4-muxer": "5.2.2",
+    "plotly.js-dist-min": "4.1.2"
+  },
+  "private": true
+}

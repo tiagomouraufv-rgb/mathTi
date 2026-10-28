@@ -1,0 +1,225 @@
+# ---- biblioteca de óptica (mesmas convenções da Folha: e^{-iωt}, ondas e^{+ikz}) ----
+from functools import lru_cache
+from math import factorial as _fact
+_EPS0 = 8.8541878128e-12; _C0 = 299792458.0
+
+def zR(w0, lam, n=1):
+    return np.pi * w0**2 * n / lam
+
+def wz(z, w0, lam, n=1):
+    return w0 * np.sqrt(1 + (z / zR(w0, lam, n))**2)
+
+def Rz(z, w0, lam, n=1):
+    z = np.asarray(z, dtype=float)
+    with np.errstate(divide="ignore"):
+        return np.where(z == 0, np.inf, z * (1 + (zR(w0, lam, n) / np.where(z == 0, 1, z))**2))
+
+def gouy(z, w0, lam, n=1):
+    return np.arctan(z / zR(w0, lam, n))
+
+def _curv(k, r2, z, w0, lam, n):
+    R = Rz(z, w0, lam, n)
+    return np.where(np.isfinite(R), k * r2 / (2 * np.where(np.isfinite(R), R, 1)), 0.0)
+
+def Egauss(rho, z, w0, lam, n=1):
+    k = 2 * np.pi * n / lam; w = wz(z, w0, lam, n)
+    return (w0 / w) * np.exp(-rho**2 / w**2) * np.exp(1j * (k * z - gouy(z, w0, lam, n) + _curv(k, rho**2, z, w0, lam, n)))
+
+def Igauss(rho, z, w0, lam, n=1):
+    w = wz(z, w0, lam, n)
+    return (w0 / w)**2 * np.exp(-2 * rho**2 / w**2)
+
+def Ifeixe(rho, z, w0, lam, P, n=1):
+    w = wz(z, w0, lam, n)
+    return 2 * P / (np.pi * w**2) * np.exp(-2 * rho**2 / w**2)
+
+def LG(p, l, rho, phi, z, w0, lam, n=1):
+    p, l = int(round(p)), int(round(l)); al = abs(l)
+    k = 2 * np.pi * n / lam; w = wz(z, w0, lam, n)
+    C = np.sqrt(2 * _fact(p) / (np.pi * _fact(p + al)))
+    s = np.sqrt(2) * rho / w
+    amp = C / w * s**al * special.eval_genlaguerre(p, al, s**2) * np.exp(-rho**2 / w**2)
+    return amp * np.exp(1j * (l * phi + k * z + _curv(k, rho**2, z, w0, lam, n) - (2 * p + al + 1) * gouy(z, w0, lam, n)))
+
+def HG(m, nn, x, y, z, w0, lam, n=1):
+    m, nn = int(round(m)), int(round(nn))
+    k = 2 * np.pi * n / lam; w = wz(z, w0, lam, n)
+    C = np.sqrt(2 / (np.pi * 2**(m + nn) * _fact(m) * _fact(nn)))
+    amp = C / w * special.eval_hermite(m, np.sqrt(2) * x / w) * special.eval_hermite(nn, np.sqrt(2) * y / w) * np.exp(-(x**2 + y**2) / w**2)
+    return amp * np.exp(1j * (k * z + _curv(k, x**2 + y**2, z, w0, lam, n) - (m + nn + 1) * gouy(z, w0, lam, n)))
+
+def besselBeam(l, rho, phi, z, theta, lam, n=1):
+    k = 2 * np.pi * n / lam
+    return special.jv(int(round(l)), k * np.sin(theta) * rho) * np.exp(1j * (l * phi + k * np.cos(theta) * z))
+
+# --- óptica de Fourier: grade x_j = (j - N/2) L/N; matriz U[linha=y, coluna=x] ---
+def grade(L, N):
+    N = int(round(N)); return (np.arange(N) - N // 2) * L / N
+
+def campo(f, L, N):
+    x = grade(L, N); X, Y = np.meshgrid(x, x)
+    return np.vectorize(f, otypes=[complex])(X, Y)
+
+def fft2c(U):
+    return np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(U)))
+
+def ifft2c(U):
+    return np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(U)))
+
+def _freqs(U, L):
+    R, C = np.shape(U)
+    return np.meshgrid(np.fft.fftfreq(C, L / C), np.fft.fftfreq(R, L / R))
+
+def _applyH(U, L, H):
+    FX, FY = _freqs(U, L)
+    return np.fft.fftshift(np.fft.ifft2(np.fft.fft2(np.fft.ifftshift(U)) * H(FX, FY)))
+
+def propEA(U, L, lam, z, n=1):
+    k = 2 * np.pi * n / lam
+    def H(fx, fy):
+        d = k**2 - (2 * np.pi)**2 * (fx**2 + fy**2)
+        return np.where(d >= 0, np.exp(1j * np.sqrt(np.abs(d)) * z), np.exp(-np.sqrt(np.abs(d)) * abs(z)))
+    return _applyH(U, L, H)
+
+def fresnel(U, L, lam, z, n=1):
+    lm = lam / n; k = 2 * np.pi / lm
+    return _applyH(U, L, lambda fx, fy: np.exp(1j * (k * z - np.pi * lm * z * (fx**2 + fy**2))))
+
+def fraunL(L, lam, z, N, n=1):
+    return lam / n * z * int(round(N)) / L
+
+def fraunhofer(U, L, lam, z, n=1):
+    N = np.shape(U)[1]; lm = lam / n; k = 2 * np.pi / lm; dx = L / N
+    x2 = grade(fraunL(L, lam, z, N, n), N); X2, Y2 = np.meshgrid(x2, x2)
+    return np.exp(1j * k * z) * np.exp(1j * k * (X2**2 + Y2**2) / (2 * z)) / (1j * lm * z) * fft2c(U) * dx**2
+
+def lente(U, L, lam, f, n=1):
+    x = grade(L, np.shape(U)[1]); X, Y = np.meshgrid(x, x); k = 2 * np.pi * n / lam
+    return U * np.exp(-1j * k * (X**2 + Y**2) / (2 * f))
+
+def amostra(U, L, x, y):
+    N = np.shape(U)[1]; g = grade(L, N)
+    re = interpolate.RegularGridInterpolator((g, g), np.real(U), bounds_error=False, fill_value=0)
+    im = interpolate.RegularGridInterpolator((g, g), np.imag(U), bounds_error=False, fill_value=0)
+    p = np.stack(np.broadcast_arrays(np.asarray(y, float), np.asarray(x, float)), axis=-1)
+    return re(p) + 1j * im(p)
+
+def intensidade(U):
+    return np.abs(U)**2
+
+def fase(U):
+    return np.angle(U)
+
+def circ(x, y, R):
+    return (np.asarray(x)**2 + np.asarray(y)**2 <= R**2).astype(float)
+
+def rect(x, a):
+    return (np.abs(x) <= a / 2).astype(float)
+
+# --- polarização ---
+def jones(s):
+    v = {"H": [1, 0], "X": [1, 0], "V": [0, 1], "Y": [0, 1], "D": [1, 1], "A": [1, -1], "+": [1, 1j], "-": [1, -1j]}[str(s).upper()]
+    return np.array(v, dtype=complex).reshape(2, 1) / np.linalg.norm(v)
+
+def rotacao(t):
+    return np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+
+def polarizador(t):
+    c, s = np.cos(t), np.sin(t); return np.array([[c * c, c * s], [c * s, s * s]])
+
+def lamina(G, t):
+    c, s, e = np.cos(t), np.sin(t), np.exp(1j * G)
+    return np.array([[c * c + s * s * e, c * s * (1 - e)], [c * s * (1 - e), s * s + c * c * e]])
+
+def stokes(J):
+    ex, ey = np.ravel(J)[:2]
+    return np.array([[abs(ex)**2 + abs(ey)**2], [abs(ex)**2 - abs(ey)**2], [2 * np.real(np.conj(ex) * ey)], [2 * np.imag(np.conj(ex) * ey)]])
+
+def elipse(J):
+    S = np.ravel(stokes(J)); return np.array([[0.5 * np.arctan2(S[2], S[1])], [0.5 * np.arcsin(np.clip(S[3] / S[0], -1, 1))]])
+
+# --- pinças no regime de Rayleigh (SI) ---
+def CM(ep, em):
+    return (ep - em) / (ep + 2 * em)
+
+def alfaCM(a, ep, em):
+    return 4 * np.pi * _EPS0 * a**3 * em * CM(ep, em)
+
+def alfaRad(al, lam, em):
+    k = 2 * np.pi * np.sqrt(np.real(em)) / lam
+    return al / (1 - 1j * k**3 / (6 * np.pi * _EPS0 * np.real(em)) * al)
+
+def sigmaScat(al, lam, em):
+    k = 2 * np.pi * np.sqrt(np.real(em)) / lam
+    return k**4 * abs(al)**2 / (6 * np.pi * _EPS0**2 * np.real(em)**2)
+
+def sigmaAbs(al, lam, em):
+    k = 2 * np.pi * np.sqrt(np.real(em)) / lam
+    return k * np.imag(al) / (_EPS0 * np.real(em))
+
+def Fgrad(al, dI, nm):
+    return np.real(al) * dI / (2 * _C0 * nm * _EPS0)
+
+def Fscat(al, I, lam, nm):
+    return nm / _C0 * (sigmaScat(al, lam, nm**2) + sigmaAbs(al, lam, nm**2)) * I
+
+def Uarm(al, I, nm):
+    return -np.real(al) * I / (2 * _C0 * nm * _EPS0)
+
+# --- Richards–Wolf (integral vetorial de Debye, decomposição em harmônicos azimutais) ---
+_GLx, _GLw = np.polynomial.legendre.leggauss(96)
+
+@lru_cache(maxsize=64)
+def _rw_setup(NA, n1, n2, lam, f0, pol, l, d):
+    k0 = 2 * np.pi / lam; th = np.arcsin(NA / n1); smax = np.sin(th)
+    t = 0.5 * th * (_GLx + 1); wt = 0.5 * th * _GLw
+    s1, c1 = np.sin(t), np.cos(t); st2 = n1 * s1 / n2; c2 = np.sqrt((1 - st2**2).astype(complex))
+    c2 = np.where(np.imag(c2) < 0, np.conj(c2), c2)
+    if n1 == n2:
+        ts = tp = np.ones_like(c2)
+    else:
+        ts = 2 * n1 * c1 / (n1 * c1 + n2 * c2); tp = 2 * n1 * c1 / (n2 * c1 + n1 * c2)
+    dn = max(1, abs(l)) if pol in ("radial", "azimutal") else abs(l)
+    u = s1 / (f0 * smax) if np.isfinite(f0) else s1 / smax
+    A = (u**dn if dn else 1.0) * (np.exp(-u**2) if np.isfinite(f0) else 1.0) * np.sqrt(c1)
+    Mh = abs(l) + 3; Nphi = 4 * (Mh + 2); ph = 2 * np.pi * np.arange(Nphi) / Nphi; cp, sp = np.cos(ph), np.sin(ph)
+    r2 = np.sqrt(0.5)
+    ex, ey = {"x": (np.ones(Nphi), np.zeros(Nphi)), "y": (np.zeros(Nphi), np.ones(Nphi)), "circ+": (r2 + 0 * cp, 1j * r2 + 0 * cp),
+              "circ-": (r2 + 0 * cp, -1j * r2 + 0 * cp), "radial": (cp, sp), "azimutal": (-sp, cp)}[pol]
+    v = np.exp(1j * l * ph); ex = ex * v; ey = ey * v
+    Eph = -ex * sp + ey * cp; Erh = ex * cp + ey * sp
+    S = ts[:, None] * Eph[None, :]; P = tp[:, None] * Erh[None, :]
+    E = [A[:, None] * (-S * sp + P * c2[:, None] * cp), A[:, None] * (S * cp + P * c2[:, None] * sp), A[:, None] * (-P * st2[:, None])]
+    ms = np.arange(-Mh, Mh + 1)
+    W = np.exp(-1j * np.outer(ph, ms)) / Nphi
+    cm = [e @ W for e in E]  # (nós, harmônicos)
+    return dict(w=wt * s1, kt=k0 * n1 * s1, kz=k0 * n2 * c2, ph0=-k0 * n1 * d * c1, cm=cm, ms=ms)
+
+def _rw_field(S, x, y, z):
+    rho = np.hypot(x, y); vp = np.arctan2(y, x); ms = S["ms"]
+    J = special.jv(ms[None, :], S["kt"][:, None] * rho)
+    fac = (1j**ms)[None, :] * J * np.exp(1j * ms * vp)[None, :] * (S["w"] * np.exp(1j * (S["kz"] * z + S["ph0"])))[:, None]
+    return 2 * np.pi * np.array([np.sum(cm * fac) for cm in S["cm"]])
+
+def _rw_opts(NA, n1, n2, lam, f0, pol, l, d):
+    f0 = np.inf if f0 is None or f0 > 1e6 else float(f0)
+    return (float(NA), float(n1), float(n2), float(lam), f0, str(pol).lower().replace("azimuthal", "azimutal"), int(round(l)), float(d))
+
+@lru_cache(maxsize=64)
+def _rw_norm(o):
+    ref = (o[0], o[1], o[2], o[3], o[4], "x", 0, 0.0)
+    return abs(_rw_field(_rw_setup(*ref), 0.0, 0.0, 0.0)[0])**2
+
+def RWi_campo(x, y, z, NA, n1, n2, lam, d, f0=np.inf, pol="x", l=0):
+    o = _rw_opts(NA, n1, n2, lam, f0, pol, l, d)
+    return (_rw_field(_rw_setup(*o), x, y, z) / np.sqrt(_rw_norm(o))).reshape(3, 1)
+
+def RWi_I(x, y, z, NA, n1, n2, lam, d, f0=np.inf, pol="x", l=0):
+    o = _rw_opts(NA, n1, n2, lam, f0, pol, l, d)
+    return float(np.sum(np.abs(_rw_field(_rw_setup(*o), x, y, z))**2) / _rw_norm(o))
+
+def RW_campo(x, y, z, NA, n, lam, f0=np.inf, pol="x", l=0):
+    return RWi_campo(x, y, z, NA, n, n, lam, 0.0, f0, pol, l)
+
+def RW_I(x, y, z, NA, n, lam, f0=np.inf, pol="x", l=0):
+    return RWi_I(x, y, z, NA, n, n, lam, 0.0, f0, pol, l)

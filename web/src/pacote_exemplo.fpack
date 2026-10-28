@@ -1,0 +1,293 @@
+{
+  "formato": "fpack",
+  "versao_formato": 1,
+  "id": "tiago.lorentz",
+  "nome": "Osciladores de Lorentz",
+  "versao": "1.1.0",
+  "autor": "Exemplo da Folha de Cálculo",
+  "descricao": "Função dielétrica de Lorentz (um ou vários osciladores), índice complexo, absorção, refletância e soma de gaussianas para espectros.",
+  "app_minimo": "0.8.0",
+  "codigo": "// energia do fóton\nhc_eVnm := 1239.84198\nE_fot(λ) := hc_eVnm/λ\n// um oscilador: ε(E) = ε∞ + f·E0²/(E0² − E² − iγE)\nepsL(E, ε_inf, f, E0, γ) := ε_inf + f·E0^2/(E0^2 - E^2 - i·γ·E)\n// vários osciladores: P com linhas [f, E0, γ]\nepsLN(E, ε_inf, P) := prog\n  s ← ε_inf\n  for j ∈ 0 .. rows(P) - 1\n    s ← s + P[j,0]·P[j,1]^2/(P[j,1]^2 - E^2 - i·P[j,2]·E)\n  s\nend\n// índice complexo ñ = n + ik com k ≥ 0\nn_c(ε) := if(im(sqrt(ε)) < 0, -sqrt(ε), sqrt(ε))\nn_r(ε) := re(n_c(ε))\nk_e(ε) := im(n_c(ε))\nα_abs(ε, λ) := 4·π·k_e(ε)/λ\nR_norm(n_1, ε) := abs((n_1 - n_c(ε))/(n_1 + n_c(ε)))^2",
+  "js": {
+    "gaussSoma": {
+      "args": [
+        "x",
+        "P"
+      ],
+      "corpo": "let s = 0;\nfor (const r of P) { const d = (x - r[1]) / r[2]; s += r[0] * Math.exp(-0.5 * d * d); }\nreturn s;",
+      "python": "def gaussSoma(x, P):\n    P = np.atleast_2d(np.asarray(P, dtype=float))\n    x = np.asarray(x, dtype=float)[..., None]\n    return np.sum(P[:, 0] * np.exp(-0.5 * ((x - P[:, 1]) / P[:, 2])**2), axis=-1)",
+      "matlab": "function s = gaussSoma(x, P)\n  s = zeros(size(x));\n  for j = 1:size(P, 1)\n    s = s + P(j,1)*exp(-0.5*((x - P(j,2))/P(j,3)).^2);\n  end\nend"
+    }
+  },
+  "funcoes": [
+    {
+      "nome": "hc_eVnm",
+      "assinatura": "hc_eVnm",
+      "descricao": "h·c em eV·nm",
+      "entradas": "constante; não recebe entradas",
+      "exemplo": "hc_eVnm ="
+    },
+    {
+      "nome": "E_fot",
+      "assinatura": "E_fot(λ)",
+      "descricao": "Energia do fóton em eV, λ em nm",
+      "entradas": "λ: comprimento de onda em nm, número sem unidade",
+      "exemplo": "E_fot(500) ="
+    },
+    {
+      "nome": "epsL",
+      "assinatura": "epsL(E, ε_inf, f, E0, γ)",
+      "descricao": "Um oscilador de Lorentz (E, E0 e γ na mesma unidade)",
+      "entradas": "E, E0 e γ na mesma unidade de energia (eV); ε_inf e f adimensionais",
+      "exemplo": "epsL(2, 2.2, 0.8, 2.5, 0.25) ="
+    },
+    {
+      "nome": "epsLN",
+      "assinatura": "epsLN(E, ε_inf, P)",
+      "descricao": "Soma de osciladores; P tem linhas [f, E0, γ]",
+      "entradas": "E: energia; ε_inf: número; P: matriz com uma linha [f, E0, γ] por oscilador (use duas ou mais linhas)",
+      "exemplo": "P_o := [0.8, 2.5, 0.25; 0.3, 3.2, 0.4]\nepsLN(2, 2.2, P_o) ="
+    },
+    {
+      "nome": "n_c",
+      "assinatura": "n_c(ε)",
+      "descricao": "Índice complexo ñ = √ε com parte imaginária ≥ 0",
+      "entradas": "ε: função dielétrica (complexa ou real)",
+      "exemplo": "n_c(2.25 + 0.1i) ="
+    },
+    {
+      "nome": "n_r",
+      "assinatura": "n_r(ε)",
+      "descricao": "Parte real do índice",
+      "entradas": "ε: função dielétrica",
+      "exemplo": "n_r(2.25) ="
+    },
+    {
+      "nome": "k_e",
+      "assinatura": "k_e(ε)",
+      "descricao": "Coeficiente de extinção",
+      "entradas": "ε: função dielétrica",
+      "exemplo": "k_e(2.25 + 0.1i) ="
+    },
+    {
+      "nome": "α_abs",
+      "assinatura": "α_abs(ε, λ)",
+      "descricao": "Coeficiente de absorção 4πk/λ (unidade de 1/λ)",
+      "entradas": "ε: função dielétrica; λ: comprimento de onda (o resultado sai em 1/unidade de λ)",
+      "exemplo": "α_abs(2.25 + 0.1i, 500 nm) ="
+    },
+    {
+      "nome": "R_norm",
+      "assinatura": "R_norm(n_1, ε)",
+      "descricao": "Refletância em incidência normal a partir do meio n_1",
+      "entradas": "n_1: índice do meio de incidência (real); ε: função dielétrica do material",
+      "exemplo": "R_norm(1, 2.25) ="
+    },
+    {
+      "nome": "gaussSoma",
+      "assinatura": "gaussSoma(x, P)",
+      "descricao": "Soma de gaussianas; P tem linhas [A, x0, σ] (JavaScript, rápido)",
+      "entradas": "x: número; P: matriz com uma linha [A, x0, σ] por gaussiana",
+      "exemplo": "gaussSoma(1, [2, 1, 0.5; 1, 3, 1]) ="
+    }
+  ],
+  "barra": {
+    "rotulo": "Lorentz",
+    "grupos": [
+      {
+        "nome": "Função dielétrica",
+        "botoes": [
+          {
+            "rotulo": "ε (1 osc.)",
+            "inserir": "epsL(",
+            "depois": ", ε_inf, f, E0, γ)",
+            "dica": "epsL(E, ε_inf, f, E0, γ)",
+            "ajuda": {
+              "descricao": "Um oscilador de Lorentz (E, E0 e γ na mesma unidade)",
+              "entradas": "epsL(E, ε_inf, f, E0, γ): E, E0 e γ na mesma unidade de energia (eV); ε_inf e f adimensionais",
+              "exemplo": "epsL(2, 2.2, 0.8, 2.5, 0.25) ="
+            }
+          },
+          {
+            "rotulo": "ε (N osc.)",
+            "inserir": "epsLN(",
+            "depois": ", ε_inf, P)",
+            "dica": "P: linhas [f, E0, γ]",
+            "ajuda": {
+              "descricao": "Soma de osciladores; P tem linhas [f, E0, γ]",
+              "entradas": "epsLN(E, ε_inf, P): E: energia; ε_inf: número; P: matriz com uma linha [f, E0, γ] por oscilador (use duas ou mais linhas)",
+              "exemplo": "P_o := [0.8, 2.5, 0.25; 0.3, 3.2, 0.4]\nepsLN(2, 2.2, P_o) ="
+            }
+          },
+          {
+            "rotulo": "E(λ)",
+            "inserir": "E_fot(",
+            "depois": ")",
+            "dica": "λ em nm → eV",
+            "ajuda": {
+              "descricao": "Energia do fóton em eV, λ em nm",
+              "entradas": "E_fot(λ): λ: comprimento de onda em nm, número sem unidade",
+              "exemplo": "E_fot(500) ="
+            }
+          }
+        ]
+      },
+      {
+        "nome": "Óptica",
+        "botoes": [
+          {
+            "rotulo": "ñ",
+            "inserir": "n_c(",
+            "depois": ")",
+            "ajuda": {
+              "descricao": "Índice complexo ñ = √ε com parte imaginária ≥ 0",
+              "entradas": "n_c(ε): ε: função dielétrica (complexa ou real)",
+              "exemplo": "n_c(2.25 + 0.1i) ="
+            }
+          },
+          {
+            "rotulo": "n",
+            "inserir": "n_r(",
+            "depois": ")",
+            "ajuda": {
+              "descricao": "Parte real do índice",
+              "entradas": "n_r(ε): ε: função dielétrica",
+              "exemplo": "n_r(2.25) ="
+            }
+          },
+          {
+            "rotulo": "k",
+            "inserir": "k_e(",
+            "depois": ")",
+            "ajuda": {
+              "descricao": "Coeficiente de extinção",
+              "entradas": "k_e(ε): ε: função dielétrica",
+              "exemplo": "k_e(2.25 + 0.1i) ="
+            }
+          },
+          {
+            "rotulo": "α",
+            "inserir": "α_abs(",
+            "depois": ", λ)",
+            "ajuda": {
+              "descricao": "Coeficiente de absorção 4πk/λ (unidade de 1/λ)",
+              "entradas": "α_abs(ε, λ): ε: função dielétrica; λ: comprimento de onda (o resultado sai em 1/unidade de λ)",
+              "exemplo": "α_abs(2.25 + 0.1i, 500 nm) ="
+            }
+          },
+          {
+            "rotulo": "R",
+            "inserir": "R_norm(1, ",
+            "depois": ")",
+            "ajuda": {
+              "descricao": "Refletância em incidência normal a partir do meio n_1",
+              "entradas": "R_norm(n_1, ε): n_1: índice do meio de incidência (real); ε: função dielétrica do material",
+              "exemplo": "R_norm(1, 2.25) ="
+            }
+          }
+        ]
+      },
+      {
+        "nome": "Espectros",
+        "botoes": [
+          {
+            "rotulo": "Σ gaussianas",
+            "inserir": "gaussSoma(",
+            "depois": ", P)",
+            "ajuda": {
+              "descricao": "Soma de gaussianas; P tem linhas [A, x0, σ] (JavaScript, rápido)",
+              "entradas": "gaussSoma(x, P): x: número; P: matriz com uma linha [A, x0, σ] por gaussiana",
+              "exemplo": "gaussSoma(1, [2, 1, 0.5; 1, 3, 1]) ="
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "teoria": [
+    {
+      "titulo": "Modelo de Lorentz",
+      "texto": "Cada oscilador contribui com $$\\varepsilon(E)=\\varepsilon_\\infty+\\sum_j\\frac{f_j E_{0j}^2}{E_{0j}^2-E^2-i\\gamma_j E}$$ com convenção $e^{-i\\omega t}$, de modo que $\\mathrm{Im}\\,\\varepsilon>0$ indica absorção.\n\nO índice complexo é $\\tilde n=\\sqrt{\\varepsilon}=n+ik$, o coeficiente de absorção é $\\alpha=4\\pi k/\\lambda$ e a refletância normal é $R=|(n_1-\\tilde n)/(n_1+\\tilde n)|^2$.",
+      "exemplo": "P_osc := [0.8, 2.5, 0.25; 0.3, 3.2, 0.4]\nε_t(E) := epsLN(E, 2.2, P_osc)\nn_r(ε_t(2.5)) =\nk_e(ε_t(2.5)) ="
+    }
+  ],
+  "exemplo": [
+    {
+      "type": "math",
+      "w": "third",
+      "src": "P_osc := [0.8, 2.5, 0.25; 0.3, 3.2, 0.4]\nε_t(E) := epsLN(E, 2.2, P_osc)\nn_r(ε_t(2.5)) =\nk_e(ε_t(2.5)) ="
+    },
+    {
+      "type": "xy",
+      "w": "third",
+      "xvar": "E",
+      "xmin": "1.5",
+      "xmax": "4",
+      "npts": 300,
+      "traces": [
+        {
+          "expr": "n_r(ε_t(E))",
+          "name": "n",
+          "color": "#1F5FAE",
+          "width": 1.5,
+          "dash": "solid",
+          "marker": "none"
+        },
+        {
+          "expr": "k_e(ε_t(E))",
+          "name": "k",
+          "color": "#B03A2E",
+          "width": 1.5,
+          "dash": "dash",
+          "marker": "none"
+        }
+      ],
+      "xlabel": "E (eV)",
+      "ylabel": "n, k",
+      "legend": "sup-dir",
+      "preset": "acs1"
+    }
+  ],
+  "testes": [
+    {
+      "expr": "E_fot(1239.84198)",
+      "esperado": 1,
+      "tol": 1e-12
+    },
+    {
+      "expr": "re(epsL(0, 2, 1, 3, 0.1))",
+      "esperado": 3,
+      "tol": 1e-12
+    },
+    {
+      "expr": "im(epsL(3, 2, 1, 3, 0.1))",
+      "esperado": 30,
+      "tol": 1e-12
+    },
+    {
+      "expr": "re(epsLN(1, 2, [1, 3, 0.1; 0, 1, 1]))",
+      "esperado": 3.124824246,
+      "tol": 1e-09
+    },
+    {
+      "expr": "n_r(2.25)",
+      "esperado": 1.5,
+      "tol": 1e-12
+    },
+    {
+      "expr": "k_e(-1)",
+      "esperado": 1,
+      "tol": 1e-12
+    },
+    {
+      "expr": "R_norm(1, 2.25)",
+      "esperado": 0.04,
+      "tol": 1e-12
+    },
+    {
+      "expr": "gaussSoma(1, [2, 1, 0.5; 1, 3, 1])",
+      "esperado": 2.135335283236613,
+      "tol": 1e-12
+    }
+  ]
+}
