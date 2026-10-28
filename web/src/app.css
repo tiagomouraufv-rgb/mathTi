@@ -344,3 +344,4 @@ textarea.src.small { min-height: 90px; }
 .trace.top { border-left: 3px solid var(--accent); }
 .eq-nw .katex, .eq-nw .katex-html { white-space: nowrap; }
 .ml-desc { display: block; font-size: 12px; color: var(--muted); white-space: normal; margin-top: -2px; }
+@media (max-width: 1150px) { #hdrSaveAs { font-size: 0; gap: 0; padding: 0 10px; } }

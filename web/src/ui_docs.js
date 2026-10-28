@@ -167,6 +167,7 @@
     const on = list.querySelector('.on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
   X.renderTabs = renderTabs;
+  X.currentDocId = () => cur;
 
   /* ---------- desfazer / refazer ---------- */
   let pending = null, restoring = false;
@@ -326,6 +327,7 @@
     const inText = !!(e.target && e.target.closest && e.target.closest('textarea, input, select, [contenteditable="true"]'));
     const go = (fn) => { e.preventDefault(); e.stopPropagation(); fn(); };
     if (k === 'f1') return go(() => document.getElementById('hdrHelp').click());
+    if (ctrl && e.shiftKey && k === 's') return go(() => FC.uiExt.saveDocAs && FC.uiExt.saveDocAs());
     if (ctrl && k === 's') return go(() => document.getElementById('hdrSave').click());
     if (ctrl && k === 'o') return go(() => document.getElementById('hdrOpen').click());
     if (ctrl && e.shiftKey && k === 'n') return go(() => openWindow(cur));

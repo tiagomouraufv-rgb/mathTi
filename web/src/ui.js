@@ -3,7 +3,7 @@
 (function () {
   const FC = window.FC;
   const M = FC.M;
-  const VERSION = '0.9.2';
+  const VERSION = '0.9.3';
   FC.VERSION = VERSION;
   const $ = (sel, el) => (el || document).querySelector(sel);
   const h = (tag, attrs, ...kids) => {
@@ -854,7 +854,7 @@
     ],
     txt: () => FC.uiExt.textRibbon(),
     arq: () => [
-      bigBtn('Novo', IC.file, newDoc), bigBtn('Abrir', IC.open, () => $('#fileIn').click()), bigBtn('Salvar', IC.save, saveDoc),
+      bigBtn('Novo', IC.file, newDoc), bigBtn('Abrir', IC.open, openDoc), bigBtn('Salvar', IC.save, saveDoc), bigBtn('Salvar como', IC.save, () => FC.uiExt.saveDocAs()),
       bigBtn('Exemplo', '<path d="M4 19V5l8 4 8-4v14l-8 4z"/>', () => FC.uiExt.newTab(FC.EXAMPLE())),
       h('div', { class: 'sep' }),
       bigBtn('Exportar Python', '<path d="M8 4h6a3 3 0 0 1 3 3v4H9a3 3 0 0 0-3 3v3H5a2 2 0 0 1-2-2v-4a3 3 0 0 1 3-3h7"/><path d="M16 20h-6a3 3 0 0 1-3-3v-1"/><circle cx="10" cy="6.5" r=".8" fill="currentColor"/>', () => exportCode('py')),
@@ -901,7 +901,8 @@
   }
   function confirmLose() { return !state.regions.length || window.confirm('Substituir a folha atual? Salve antes se quiser guardá-la.'); }
   function newDoc() { FC.uiExt.newTab(); }
-  function saveDoc() { saveFile((state.name || 'folha').replace(/[^\wÀ-ú\-]+/g, '_') + '.fcalc', 'application/json', serialize()); state.dirty = false; }
+  function saveDoc() { if (FC.uiExt.saveDoc) return FC.uiExt.saveDoc(); saveFile((state.name || 'folha').replace(/[^\wÀ-ú\-]+/g, '_') + '.fcalc', 'application/json', serialize()); state.dirty = false; }
+  function openDoc() { if (FC.uiExt.openDoc) return FC.uiExt.openDoc(); $('#fileIn').click(); }
   FC.openText = (txt, fname) => { try { FC.uiExt.openInNewTab(JSON.parse(txt), fname); } catch (e) { toast('Não consegui abrir: ' + e.message); } };
 
   /* ---------- Meu estilo (preset do usuário) ---------- */
@@ -947,7 +948,9 @@
       const rd = new FileReader(); rd.onload = () => FC.openText(rd.result, f.name); rd.readAsText(f); e.target.value = '';
     });
     $('#hdrSave').addEventListener('click', saveDoc);
-    $('#hdrOpen').addEventListener('click', () => $('#fileIn').click());
+    $('#hdrOpen').addEventListener('click', openDoc);
+    $('#hdrSaveAs').addEventListener('click', () => FC.uiExt.saveDocAs());
+    setTimeout(() => FC.uiExt.showLinked && FC.uiExt.showLinked(), 500);
     $('#hdrHelp').addEventListener('click', openHelp);
     $('#help .close').addEventListener('click', () => { $('#help').hidden = true; });
     document.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => addRegion(b.dataset.add)));

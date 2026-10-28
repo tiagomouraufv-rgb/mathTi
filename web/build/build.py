@@ -32,7 +32,7 @@ libs = ''.join(
 # gifenc vem em CommonJS: embrulha para criar window.gifenc
 libs += '<script>window.gifenc = (function () { var exports = {}; var module = { exports: exports };\n' + js_safe((NM / 'gifenc/dist/gifenc.js').read_text(encoding='utf-8')) + '\nreturn module.exports; })();</script>\n'
 app = ''.join('<script>' + js_safe((SRC / f).read_text(encoding='utf-8')) + '</script>\n'
-              for f in ['engine.js', 'prog.js', 'plots.js', 'data.js', 'optics.js', 'packs.js', 'compute.js', 'translate.js', 'example.js', 'ui_data.js', 'ui_optics.js', 'ui_packs.js', 'markdown.js', 'help_tools.js', 'ui_docs.js', 'ui_text.js', 'ui_plots.js', 'ui_drag.js', 'ui_eqfit.js', 'anim.js', 'ui.js'])
+              for f in ['engine.js', 'prog.js', 'plots.js', 'data.js', 'optics.js', 'packs.js', 'compute.js', 'translate.js', 'example.js', 'ui_data.js', 'ui_optics.js', 'ui_packs.js', 'markdown.js', 'help_tools.js', 'ui_docs.js', 'ui_files.js', 'ui_text.js', 'ui_plots.js', 'ui_drag.js', 'ui_eqfit.js', 'anim.js', 'ui.js'])
 # versão Python da biblioteca de óptica (usada pela exportação)
 app = '<script>window.FC = window.FC || {}; FC.PY_OPTICS = ' + js_safe(json.dumps((SRC / 'optics_py.txt').read_text(encoding='utf-8'))) + '; FC.DEMO_PACK = ' + js_safe(json.dumps((SRC / 'pacote_exemplo.fpack').read_text(encoding='utf-8'))) + ';</script>\n' + app
 # código do Worker (cálculo em segundo plano): math.js + motor + gráficos (só cálculo)

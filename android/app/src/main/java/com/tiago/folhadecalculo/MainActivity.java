@@ -6,7 +6,9 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.database.Cursor;
 import android.net.Uri;
+import android.provider.OpenableColumns;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
@@ -25,6 +27,7 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -38,6 +41,9 @@ public class MainActivity extends Activity {
     private static final String START_URL = "https://" + HOST + "/index.html";
     private static final int REQ_SAVE = 101;
     private static final int REQ_OPEN = 102;
+    private static final int REQ_SAVE_AS = 103;
+    private static final int REQ_OPEN_DOC = 104;
+    private String pendingToken;
 
     private WebView web;
     private boolean isExtraWindow = false;
@@ -187,6 +193,63 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** Salvar como: o usuário escolhe o arquivo; a folha fica ligada a ele (permissão permanente). */
+        @JavascriptInterface
+        public void saveFileAs(String name, String mime, String base64, String token) {
+            final byte[] data;
+            try { data = Base64.decode(base64, Base64.DEFAULT); } catch (Exception e) { return; }
+            runOnUiThread(() -> {
+                pendingBytes = data; pendingName = name; pendingToken = token;
+                Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType(mime == null || mime.isEmpty() ? "application/octet-stream" : mime);
+                i.putExtra(Intent.EXTRA_TITLE, name);
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                try { startActivityForResult(i, REQ_SAVE_AS); }
+                catch (Exception e) { Toast.makeText(MainActivity.this, "Não foi possível abrir o seletor de arquivos", Toast.LENGTH_LONG).show(); }
+            });
+        }
+
+        /** Salvar: grava por cima do arquivo já ligado à folha. Devolve "ok" ou a mensagem de erro. */
+        @JavascriptInterface
+        public String writeUri(String uri, String base64) {
+            try (OutputStream out = getContentResolver().openOutputStream(Uri.parse(uri), "wt")) {
+                if (out == null) return "sem acesso";
+                out.write(Base64.decode(base64, Base64.DEFAULT));
+                return "ok";
+            } catch (Exception e) {
+                return String.valueOf(e.getMessage());
+            }
+        }
+
+        /** Lê um arquivo ligado (texto UTF-8). */
+        @JavascriptInterface
+        public String readUri(String uri) {
+            try (InputStream in = getContentResolver().openInputStream(Uri.parse(uri))) {
+                if (in == null) return "ERRO: sem acesso";
+                ByteArrayOutputStream b = new ByteArrayOutputStream();
+                byte[] buf = new byte[65536]; int n;
+                while ((n = in.read(buf)) > 0) b.write(buf, 0, n);
+                return b.toString("UTF-8");
+            } catch (Exception e) {
+                return "ERRO: " + e.getMessage();
+            }
+        }
+
+        /** Abrir uma folha .fcalc guardando a permissão de gravar nela depois (Salvar por cima). */
+        @JavascriptInterface
+        public void openDocument(String token) {
+            runOnUiThread(() -> {
+                pendingToken = token;
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                try { startActivityForResult(i, REQ_OPEN_DOC); }
+                catch (Exception e) { Toast.makeText(MainActivity.this, "Não foi possível abrir o seletor de arquivos", Toast.LENGTH_LONG).show(); }
+            });
+        }
+
         @JavascriptInterface
         public String platform() {
             return "android";
@@ -235,6 +298,28 @@ public class MainActivity extends Activity {
                 fileCallback.onReceiveValue(result);
                 fileCallback = null;
             }
+        } else if (requestCode == REQ_SAVE_AS || requestCode == REQ_OPEN_DOC) {
+            boolean ok = false; String uriStr = "", name = "";
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                Uri u = data.getData();
+                uriStr = u.toString();
+                try {
+                    int fl = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    getContentResolver().takePersistableUriPermission(u, fl != 0 ? fl : Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                } catch (Exception ignored) { }
+                name = displayName(u);
+                if (requestCode == REQ_SAVE_AS) {
+                    try (OutputStream out = getContentResolver().openOutputStream(u, "wt")) {
+                        if (out != null) { out.write(pendingBytes); ok = true; }
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Erro ao gravar: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                } else ok = true;
+            }
+            String fn = requestCode == REQ_SAVE_AS ? "fcalcSavedAs" : "fcalcOpened";
+            String js = "window." + fn + " && window." + fn + "(" + quote(pendingToken) + "," + ok + "," + quote(uriStr) + "," + quote(name.isEmpty() ? pendingName : name) + ")";
+            web.evaluateJavascript(js, null);
+            pendingBytes = null; pendingName = null; pendingToken = null;
         } else if (requestCode == REQ_SAVE) {
             boolean ok = false;
             if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingBytes != null) {
@@ -252,6 +337,14 @@ public class MainActivity extends Activity {
             pendingBytes = null;
             pendingName = null;
         }
+    }
+
+    private String displayName(Uri u) {
+        try (Cursor c = getContentResolver().query(u, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) { String n = c.getString(0); if (n != null) return n; }
+        } catch (Exception ignored) { }
+        String p = u.getLastPathSegment();
+        return p == null ? "" : p.substring(p.lastIndexOf('/') + 1);
     }
 
     private static String quote(String s) {
