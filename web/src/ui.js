@@ -3,7 +3,7 @@
 (function () {
   const FC = window.FC;
   const M = FC.M;
-  const VERSION = '0.9.3';
+  const VERSION = '0.9.4';
   FC.VERSION = VERSION;
   const $ = (sel, el) => (el || document).querySelector(sel);
   const h = (tag, attrs, ...kids) => {
@@ -644,7 +644,7 @@
         const xo = h('input', { type: 'checkbox' }); xo.checked = !!t.xown; xo.addEventListener('change', () => { t.xown = xo.checked; drawTraces(); markDirty(); });
         const xrows = [h('div', { class: 'trow' }, field('Eixo x desta curva', xp, 'grow'), kind === 'func' ? h('label', { class: 'chk' }, xo, ' variável, intervalo e pontos próprios') : null)];
         if (kind === 'func' && t.xown) xrows.push(h('div', { class: 'trow' }, field('Variável', tin(t, 'txvar', r.xvar || 'x')), field('de', tin(t, 'txmin', String(r.xmin || 'mín. do eixo'))), field('até', tin(t, 'txmax', String(r.xmax || 'máx. do eixo'))), field('pontos', tin(t, 'tn', String(r.npts || 400)))));
-        tr.append(h('div', { class: 'trace' + (t.txpos === 'top' ? ' top' : '') },
+        tr.append(h('div', { class: 'trace' + (t.txpos === 'top' ? ' trace-xtop' : '') },
           h('div', { class: 'trow' }, field('Curva ' + (i + 1) + ' — tipo', kd, 'grow')),
           ...rows, ...xrows,
           h('div', { class: 'trow' }, field('Dividir por (opcional)', tin(t, 'div', 'ex.: k_B·295 K, 2, máximo teórico'), 'grow'), field('Legenda', nm, 'grow'), h('label', { class: 'chk' }, show, ' na legenda')),
