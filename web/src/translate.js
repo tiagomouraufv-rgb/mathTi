@@ -866,6 +866,7 @@
               if (r.xlog) body.push("ax.set_xscale('log')");
               if (r.ylog) body.push("ax.set_yscale('log')");
               if (String(r.xlo || '').trim() && String(r.xhi || '').trim()) body.push('ax.set_xlim(' + r.xlo + ', ' + r.xhi + ')');
+              else if (needX) body.push('if __x[0] > __x[-1]: ax.invert_xaxis()  ' + C('eixo na ordem do intervalo pedido'));
               if (String(r.ymin || '').trim() && String(r.ymax || '').trim()) body.push('ax.set_ylim(' + r.ymin + ', ' + r.ymax + ')');
               for (const [ax2, fmt, dec] of [['xaxis', r.xfmt, r.xdec], ['yaxis', r.yfmt, r.ydec]]) {
                 const n = String(dec ?? '').trim() === '' ? null : Math.round(Number(dec));
@@ -875,6 +876,7 @@
                 if (fmt) usesMT = true;
               }
               if (hasTop) {
+                { const k2 = traces.findIndex((q) => isTop(q) && q.kind === 'own'); if (k2 >= 0 && !(String(r.x2lo || '').trim() && String(r.x2hi || '').trim())) body.push('if __cv[' + k2 + '][0][0] > __cv[' + k2 + '][0][-1]: ax2.invert_xaxis()  ' + C('eixo superior na ordem do intervalo pedido')); }
                 body.push('ax2.set_xlabel(' + pyStr(labelPy(r.x2label)) + ')');
                 if (r.x2log) body.push("ax2.set_xscale('log')");
                 if (String(r.x2lo || '').trim() && String(r.x2hi || '').trim()) body.push('ax2.set_xlim(' + r.x2lo + ', ' + r.x2hi + ')');

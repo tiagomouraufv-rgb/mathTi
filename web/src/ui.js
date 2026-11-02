@@ -3,7 +3,7 @@
 (function () {
   const FC = window.FC;
   const M = FC.M;
-  const VERSION = '0.9.4';
+  const VERSION = '0.9.5';
   FC.VERSION = VERSION;
   const $ = (sel, el) => (el || document).querySelector(sel);
   const h = (tag, attrs, ...kids) => {

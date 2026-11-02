@@ -182,7 +182,12 @@
     const d1 = dv(r.xdv), d2 = dv(r.x2dv);
     if (d1 !== 1) mainXs = mainXs.map((x) => x / d1);
     for (const tr of traces) if (tr.xs) { const k = tr.top ? d2 : d1; if (k !== 1) tr.xs = tr.xs.map((x) => x / k); }
-    return { xs: mainXs, traces };
+    // o eixo segue a ordem do intervalo pedido: de 1240 até 310 desenha 1240 à esquerda
+    const desc = (v) => v && v.length > 1 && v[0] > v[v.length - 1];
+    const xrev = desc(mainXs) && !traces.some((q) => !q.top && q.xs && !desc(q.xs) && (q.t.xown || (q.t.kind || 'func') === 'func'));
+    const own2 = traces.filter((q) => q.top && q.t.xown);
+    const x2rev = own2.length > 0 && own2.every((q) => desc(q.xs));
+    return { xs: mainXs, traces, xrev, x2rev };
   }
   // expressão que já é uma matriz (ex.: intensidade de um campo da óptica de Fourier)
   function matrixGrid(S, r) {
@@ -250,10 +255,12 @@
       marker: { symbol: t.marker && t.marker !== 'none' ? t.marker : 'circle', size: (exp ? 4 : 6), color: t.color || PALETTE[i % PALETTE.length] }
     }));
     layout.xaxis = axis(r.xlabel || r.param || '', { log: r.xlog, min: r.xlo, max: r.xhi, fmt: r.xfmt, dec: r.xdec, step: r.xstep, minor: r.minor }, fontPx);
+    if (d.xrev && layout.xaxis.autorange !== false) layout.xaxis.autorange = 'reversed';
     layout.yaxis = axis(r.ylabel, { log: r.ylog, min: r.ymin, max: r.ymax, fmt: r.yfmt, dec: r.ydec, step: r.ystep, minor: r.minor }, fontPx);
     if (d.traces.some((q) => q.top)) {
       // eixo x superior independente (outra variável, outra escala)
       layout.xaxis2 = Object.assign(axis(r.x2label || '', { log: r.x2log, min: r.x2lo, max: r.x2hi, fmt: r.x2fmt, dec: r.x2dec, step: r.x2step, minor: r.minor }, fontPx), { overlaying: 'x', side: 'top', anchor: 'y', mirror: false });
+      if (d.x2rev && layout.xaxis2.autorange !== false) layout.xaxis2.autorange = 'reversed';
       layout.xaxis.mirror = false;
     }
     if (r.legend && r.legend !== 'nao' && data.some((q) => q.showlegend)) {
