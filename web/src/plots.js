@@ -61,6 +61,7 @@
       showgrid: false, zeroline: false, automargin: true, exponentformat: 'power'
     };
     tickFmt(a, opt.fmt, opt.dec, opt.step, opt.log);
+    if (opt.color) { a.linecolor = a.tickcolor = opt.color; a.tickfont = { color: opt.color }; a.title.font = { color: opt.color }; a.minor.tickcolor = opt.color; }
     if (opt.minor === false || opt.minor === 'false') a.minor = { ticks: '' };
     const lo = Number(opt.min), hi = Number(opt.max);
     if (opt.min !== '' && opt.min != null && opt.max !== '' && opt.max != null && isFinite(lo) && isFinite(hi)) {
@@ -192,14 +193,66 @@
     // dividir o eixo x por uma constante (ex.: nm → µm, ou E/E_0)
     const dv = (e) => { if (!String(e ?? '').trim()) return 1; const v = S.evalScalar(e); if (!isFinite(v) || v === 0) throw new Error('Divisor do eixo x inválido (' + e + ').'); return v; };
     const d1 = dv(r.xdv), d2 = dv(r.x2dv);
+    // eixo superior como conversão do de baixo (ex.: λ = 1240/E): as curvas do eixo de cima
+    // vão para a posição equivalente no eixo de baixo e as marcas de cima caem nos lugares certos
+    let conv = null;
+    if (r.x2mode === 'conv' && String(r.x2conv || '').trim()) conv = convAxis(S, r, mainXs, traces, d1, d2);
     if (d1 !== 1) mainXs = mainXs.map((x) => x / d1);
-    for (const tr of traces) if (tr.xs) { const k = tr.top ? d2 : d1; if (k !== 1) tr.xs = tr.xs.map((x) => x / k); }
+    for (const tr of traces) if (tr.xs) { const k = tr.top ? d2 : d1; if (k !== 1) tr.xs = tr.xs.map((x) => (x == null ? null : x / k)); }
     // o eixo segue a ordem do intervalo pedido: de 1240 até 310 desenha 1240 à esquerda
     const desc = (v) => v && v.length > 1 && v[0] > v[v.length - 1];
     const xrev = desc(mainXs) && !traces.some((q) => !q.top && q.xs && !desc(q.xs) && (q.t.xown || (q.t.kind || 'func') === 'func'));
     const own2 = traces.filter((q) => q.top && q.t.xown);
     const x2rev = own2.length > 0 && own2.every((q) => desc(q.xs));
-    return { xs: mainXs, traces, xrev, x2rev };
+    return { xs: mainXs, traces, xrev, x2rev, conv };
+  }
+  function niceTicks(lo, hi, n) {
+    if (lo > hi) [lo, hi] = [hi, lo];
+    const span = hi - lo; if (!(span > 0)) return [lo];
+    const raw = span / Math.max(1, n), p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+    const step = (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p;
+    const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(+v.toPrecision(12));
+    return out;
+  }
+  function convAxis(S, r, mainXs, traces, d1, d2) {
+    const has = (v) => String(v ?? '').trim() !== '';
+    // intervalo do eixo de baixo (valores sem divisão)
+    let a, b;
+    if (has(r.xlo) && has(r.xhi)) { a = S.evalScalar(r.xlo) * d1; b = S.evalScalar(r.xhi) * d1; }
+    else if (mainXs.length > 1) { a = mainXs[0]; b = mainXs[mainXs.length - 1]; }
+    else if (has(r.xmin) && has(r.xmax)) { a = S.evalScalar(r.xmin); b = S.evalScalar(r.xmax); }
+    else throw new Error('Eixo superior por conversão: preencha mínimo e máximo do eixo x (aba Eixos).');
+    const code = S.compileExpr(r.x2conv), ov = new FC.Overlay(S.scope), N = 4001;
+    const E = [], L = [];
+    for (let k = 0; k < N; k++) { const x = a + ((b - a) * k) / (N - 1); ov.set(r.xvar, x); const v = FC.num(code.evaluate(ov)); if (isFinite(v)) { E.push(x); L.push(v); } }
+    if (L.length < 2) throw new Error('Eixo superior por conversão: “' + r.x2conv + '” não deu números no intervalo do eixo x.');
+    const up = L[L.length - 1] > L[0];
+    for (let k = 1; k < L.length; k++) if (up ? L[k] < L[k - 1] : L[k] > L[k - 1]) throw new Error('Eixo superior por conversão: “' + r.x2conv + '” precisa ser sempre crescente ou sempre decrescente no intervalo do eixo x.');
+    // posição no eixo de baixo de um valor do eixo de cima (busca binária + interpolação)
+    const inv = (v) => {
+      let lo = 0, hi = L.length - 1;
+      const inside = up ? v >= L[0] && v <= L[hi] : v <= L[0] && v >= L[hi];
+      if (!inside) return null;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (up ? L[m] <= v : L[m] >= v) lo = m; else hi = m; }
+      const t = L[hi] === L[lo] ? 0 : (v - L[lo]) / (L[hi] - L[lo]);
+      return E[lo] + t * (E[hi] - E[lo]);
+    };
+    for (const tr of traces) if (tr.top && tr.xs) { tr.xs = tr.xs.map((v) => { const e = inv(v); return e == null ? null : e; }); tr.top = false; tr.conv = true; }
+    const lo = Math.min(L[0], L[L.length - 1]), hi = Math.max(L[0], L[L.length - 1]);
+    const inRange = (v) => v >= lo - 1e-12 * Math.abs(lo) && v <= hi + 1e-12 * Math.abs(hi);
+    let vals;
+    if (has(r.x2ticks)) vals = String(r.x2ticks).split(/[;,\s]+/).filter(Boolean).map((s) => S.evalScalar(s)).filter((v) => isFinite(v) && inRange(v));
+    else {
+      // marcas "redondas" que não se amontoam: numa conversão como 1240/E elas se juntam num lado
+      const cand = niceTicks(lo / d2, hi / d2, 9).map((v) => v * d2).filter(inRange);
+      const step = cand.length > 1 ? Math.abs(cand[1] - cand[0]) : 1;
+      const round = (v) => { const m = Math.abs(+v.toPrecision(12)).toExponential().split('e')[0].replace('.', '').replace(/0+$/, ''); return -m.length * 10 + ('125'.includes(m[0]) ? 1 : 0); };
+      const gap = Math.abs(b - a) / 11, kept = [];
+      for (const v of cand.slice().sort((x, y) => round(y) - round(x))) { const p = inv(v); if (p != null && kept.every((k) => Math.abs(inv(k) - p) >= gap)) kept.push(v); }
+      vals = kept.sort((x, y) => x - y);
+    }
+    const fmt = (v) => { let s = String(+(v / d2).toPrecision(6)); if (r.comma) s = s.replace('.', ','); return s; };
+    return { range: [a / d1, b / d1], tickvals: vals.map((v) => inv(v) / d1), ticktext: vals.map(fmt) };
   }
   // expressão que já é uma matriz (ex.: intensidade de um campo da óptica de Fourier)
   function matrixGrid(S, r) {
@@ -266,12 +319,18 @@
       line: { color: t.color || PALETTE[i % PALETTE.length], width: Number(t.width) || 1.5, dash: t.dash || 'solid', shape: 'linear' },
       marker: { symbol: t.marker && t.marker !== 'none' ? t.marker : 'circle', size: (exp ? 4 : 6), color: t.color || PALETTE[i % PALETTE.length] }
     }));
-    layout.xaxis = axis(r.xlabel || r.param || '', { log: r.xlog, min: r.xlo, max: r.xhi, fmt: r.xfmt, dec: r.xdec, step: r.xstep, minor: r.minor }, fontPx);
+    layout.xaxis = axis(r.xlabel || r.param || '', { log: r.xlog, min: r.xlo, max: r.xhi, fmt: r.xfmt, dec: r.xdec, step: r.xstep, minor: r.minor, color: r.xcolor }, fontPx);
     if (d.xrev && layout.xaxis.autorange !== false) layout.xaxis.autorange = 'reversed';
-    layout.yaxis = axis(r.ylabel, { log: r.ylog, min: r.ymin, max: r.ymax, fmt: r.yfmt, dec: r.ydec, step: r.ystep, minor: r.minor }, fontPx);
-    if (d.traces.some((q) => q.top)) {
+    layout.yaxis = axis(r.ylabel, { log: r.ylog, min: r.ymin, max: r.ymax, fmt: r.yfmt, dec: r.ydec, step: r.ystep, minor: r.minor, color: r.ycolor }, fontPx);
+    if (d.conv) {
+      // eixo de cima = conversão do de baixo: mesma faixa, marcas nas posições equivalentes
+      layout.xaxis.range = d.conv.range; layout.xaxis.autorange = false; layout.xaxis.mirror = false;
+      layout.xaxis2 = Object.assign(axis(r.x2label || '', { color: r.x2color }, fontPx), { overlaying: 'x', side: 'top', anchor: 'y', mirror: false, matches: 'x', tickmode: 'array', tickvals: d.conv.tickvals, ticktext: d.conv.ticktext, tickangle: 0, minor: { ticks: '' } });
+      delete layout.xaxis2.range; delete layout.xaxis2.autorange;
+      data.push({ type: 'scatter', mode: 'lines', x: d.conv.range, y: [null, null], xaxis: 'x2', showlegend: false, hoverinfo: 'skip' });
+    } else if (d.traces.some((q) => q.top)) {
       // eixo x superior independente (outra variável, outra escala)
-      layout.xaxis2 = Object.assign(axis(r.x2label || '', { log: r.x2log, min: r.x2lo, max: r.x2hi, fmt: r.x2fmt, dec: r.x2dec, step: r.x2step, minor: r.minor }, fontPx), { overlaying: 'x', side: 'top', anchor: 'y', mirror: false });
+      layout.xaxis2 = Object.assign(axis(r.x2label || '', { log: r.x2log, min: r.x2lo, max: r.x2hi, fmt: r.x2fmt, dec: r.x2dec, step: r.x2step, minor: r.minor, color: r.x2color }, fontPx), { overlaying: 'x', side: 'top', anchor: 'y', mirror: false });
       if (d.x2rev && layout.xaxis2.autorange !== false) layout.xaxis2.autorange = 'reversed';
       layout.xaxis.mirror = false;
     }

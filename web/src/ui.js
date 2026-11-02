@@ -3,7 +3,7 @@
 (function () {
   const FC = window.FC;
   const M = FC.M;
-  const VERSION = '0.9.6';
+  const VERSION = '0.9.7';
   FC.VERSION = VERSION;
   const $ = (sel, el) => (el || document).querySelector(sel);
   const h = (tag, attrs, ...kids) => {
@@ -726,22 +726,38 @@
           h('button', { class: 'btn small danger', onclick: () => removeTrace(i) }, icon(IC.trash, 15), 'Remover')));
       return out;
     };
+    // cor de um eixo: escolher à mão ou copiar a cor de uma curva
+    const axisColorField = (key, lab) => {
+      const c = h('input', { type: 'color', value: r[key] || '#000000', 'aria-label': lab, oninput: (e) => { r[key] = e.target.value === '#000000' ? '' : e.target.value; markDirty(); } });
+      const pick = h('select', { 'aria-label': lab + ': copiar cor', onchange: (e) => { const v = e.target.value; if (v === 'preto') r[key] = ''; else if (v !== '') r[key] = r.traces[+v].color || FC.PALETTE[+v % FC.PALETTE.length]; c.value = r[key] || '#000000'; e.target.value = ''; markDirty(); } },
+        h('option', { value: '' }, 'copiar cor…'), h('option', { value: 'preto' }, 'preto (padrão)'), ...r.traces.map((t, i) => h('option', { value: String(i) }, 'da Curva ' + (i + 1) + (t.name || t.expr ? ' · ' + String(t.name || t.expr).slice(0, 16) : ''))));
+      return field(lab, h('div', { class: 'trow' }, c, pick), 'span2');
+    };
     const eixosPane = () => {
+      const top2 = r.traces.some((t) => t.txpos === 'top');
+      const conv = r.x2mode === 'conv';
       const out = [
         h('div', { class: 'fsec' }, 'Eixo x (embaixo)'),
         h('div', { class: 'grid4' }, field('Variável', inp(r, 'xvar')), field('Mínimo', inp(r, 'xmin', { ph: 'da variável' })), field('Máximo', inp(r, 'xmax', { ph: 'da variável' })), field('Pontos', inp(r, 'npts', { type: 'number' }))),
         h('div', { class: 'grid4' }, field('Rótulo x', inp(r, 'xlabel', { ph: 'E (eV)' }), 'span2'), field('Dividir x por', inp(r, 'xdv', { ph: 'ex.: 1000' })), field('Escala log', inp(r, 'xlog', { type: 'checkbox' }))),
-        h('div', { class: 'grid4' }, field('Mostrar x de', inp(r, 'xlo', { ph: 'auto' })), field('até', inp(r, 'xhi', { ph: 'auto' }))),
-        h('div', { class: 'grid4' }, ...axisFmt(r, 'x'))];
-      if (r.traces.some((t) => t.txpos === 'top')) out.push(
-        h('div', { class: 'fsec' }, 'Eixo x superior (independente)'),
+        h('div', { class: 'grid4' }, field('Mostrar x de', inp(r, 'xlo', { ph: 'auto' })), field('até', inp(r, 'xhi', { ph: 'auto' })), axisColorField('xcolor', 'Cor do eixo x')),
+        h('div', { class: 'grid4' }, ...axisFmt(r, 'x')),
+        h('div', { class: 'fsec' }, 'Eixo x superior'),
+        h('div', { class: 'grid4' }, field('Tipo', sel(r, 'x2mode', [['', top2 ? 'independente (escala própria)' : 'nenhum (aparece se uma curva usar)'], ['conv', 'conversão do eixo de baixo (ex.: λ = 1240/E)']], () => { markDirty(); paintPane(); }), 'span4'))];
+      if (conv) out.push(
+        h('div', { class: 'grid4' }, field('Valor de cima em função de ' + (r.xvar || 'x'), inp(r, 'x2conv', { ph: '1240/' + (r.xvar || 'E') }), 'span2'), field('Marcas (opcional)', inp(r, 'x2ticks', { ph: 'ex.: 1200, 800, 600, 500, 400' }), 'span2')),
+        h('div', { class: 'grid4' }, field('Rótulo x superior', inp(r, 'x2label', { ph: 'λ (nm)' }), 'span2'), field('Dividir x sup. por', inp(r, 'x2dv', { ph: 'ex.: 1000' }))),
+        h('div', { class: 'grid4' }, axisColorField('x2color', 'Cor do eixo superior')),
+        h('p', { class: 'hint' }, 'As marcas de cima caem exatamente sobre o valor equivalente de baixo (ex.: 620 nm sobre 2 eV), e as curvas do eixo superior são desenhadas na posição certa. A conversão precisa ser sempre crescente ou sempre decrescente no intervalo.'));
+      else if (top2) out.push(
         h('div', { class: 'grid4' }, field('Rótulo x superior', inp(r, 'x2label', { ph: 'λ (nm)' }), 'span2'), field('Dividir x sup. por', inp(r, 'x2dv', { ph: 'ex.: 1000' })), field('Escala log', inp(r, 'x2log', { type: 'checkbox' }))),
-        h('div', { class: 'grid4' }, field('Mostrar x sup. de', inp(r, 'x2lo', { ph: 'auto' })), field('até', inp(r, 'x2hi', { ph: 'auto' }))),
-        h('div', { class: 'grid4' }, ...axisFmt(r, 'x2')));
+        h('div', { class: 'grid4' }, field('Mostrar x sup. de', inp(r, 'x2lo', { ph: 'auto' })), field('até', inp(r, 'x2hi', { ph: 'auto' })), axisColorField('x2color', 'Cor do eixo superior')),
+        h('div', { class: 'grid4' }, ...axisFmt(r, 'x2')),
+        h('p', { class: 'hint' }, 'Independente: escala linear própria; os valores de cima e de baixo só coincidem nas pontas. Para λ e E alinhados ponto a ponto, escolha “conversão do eixo de baixo”.'));
       out.push(
         h('div', { class: 'fsec' }, 'Eixo y'),
         h('div', { class: 'grid4' }, field('Rótulo y', inp(r, 'ylabel'), 'span2'), field('Escala log', inp(r, 'ylog', { type: 'checkbox' }))),
-        h('div', { class: 'grid4' }, field('y mínimo', inp(r, 'ymin', { ph: 'auto' })), field('y máximo', inp(r, 'ymax', { ph: 'auto' }))),
+        h('div', { class: 'grid4' }, field('y mínimo', inp(r, 'ymin', { ph: 'auto' })), field('y máximo', inp(r, 'ymax', { ph: 'auto' })), axisColorField('ycolor', 'Cor do eixo y')),
         h('div', { class: 'grid4' }, ...axisFmt(r, 'y')),
         h('p', { class: 'hint' }, 'O eixo segue a ordem do intervalo: de 1240 até 310 desenha 1240 à esquerda. Rótulos aceitam _ (subscrito), ^ (sobrescrito) e nomes LaTeX: λ_{OT}, k_{B}T, x^2.'));
       return out;

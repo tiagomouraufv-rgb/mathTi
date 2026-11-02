@@ -851,16 +851,28 @@
                 const ref = r.normRef === 'value' ? E.expr(parse(r.normVal || '1')) : r.normRef === 'curve' ? 'np.nanmax(np.abs(__cv[' + Math.max(0, Math.round(Number(r.normCurve) || 1) - 1) + '][1]))' : 'max(np.nanmax(np.abs(cy)) for cx, cy in __cv)';
                 body.push('__ref = ' + ref, '__cv = [(cx, cy / __ref) for cx, cy in __cv]  ' + C('todas pelo mesmo valor'));
               }
-              const isTop = (q) => q.t.txpos === 'top', hasTop = traces.some(isTop);
+              const isConv = r.x2mode === 'conv' && String(r.x2conv || '').trim() !== '';
+              const isTop = (q) => !isConv && q.t.txpos === 'top', hasTop = traces.some(isTop);
               const dvs = (e) => (String(e ?? '').trim() ? E.expr(parse(e)) : null);
               const dx1 = dvs(r.xdv), dx2 = dvs(r.x2dv);
+              if (isConv) {
+                // eixo de cima = conversão do de baixo (ex.: λ = 1240/E)
+                const prevL = E.locals; E.locals = new Set([xv]); const cv = E.expr(parse(r.x2conv)); E.locals = prevL;
+                const xr = hasLim ? 'np.linspace(' + E.expr(parse(r.xmin)) + ', ' + E.expr(parse(r.xmax)) + ', 2)' : E.name(xv);
+                body.push(C('eixo superior: conversão do eixo de baixo, ' + r.x2conv),
+                  '__xr = np.asarray(' + xr + ', dtype=float); __Eg = np.linspace(np.nanmin(__xr), np.nanmax(__xr), 4001)',
+                  '__Lg = np.vectorize(lambda ' + E.name(xv) + ': ' + cv + ', otypes=[float])(__Eg); __o = np.argsort(__Lg)',
+                  'def __cima(e): return np.interp(e, __Eg, __Lg)',
+                  'def __baixo(l): return np.interp(l, __Lg[__o], __Eg[__o], left=np.nan, right=np.nan)');
+                traces.forEach((q, k) => { if (q.t.txpos === 'top') body.push('__cv[' + k + '] = (__baixo(__cv[' + k + '][0]), __cv[' + k + '][1])  ' + C('curva do eixo de cima na posição equivalente de baixo')); });
+              }
               traces.forEach((q, k) => { const dd = isTop(q) ? dx2 : dx1; if (dd) body.push('__cv[' + k + '] = (__cv[' + k + '][0] / (' + dd + '), __cv[' + k + '][1])  ' + C('eixo x dividido por ' + (isTop(q) ? r.x2dv : r.xdv))); });
               body.push('fig, ax = plt.subplots(figsize=(' + w + ', ' + hh + '))');
               if (hasTop) body.push('ax2 = ax.twiny()  ' + C('eixo x superior independente'));
               traces.forEach(({ t }, k) => {
                 const mk = t.marker && t.marker !== 'none' ? ", marker='" + MARK_PY[t.marker] + "'" + (/open/.test(t.marker) ? ", mfc='none'" : '') + ', ms=3' : '';
                 const ls = t.marker && t.marker !== 'none' && t.lines === false ? "ls='none'" : "ls='" + (DASH_PY[t.dash] || '-') + "'";
-                body.push((t.txpos === 'top' ? 'ax2' : 'ax') + '.plot(__cv[' + k + '][0], __cv[' + k + '][1], color=' + pyStr(t.color || '#1F5FAE') + ', lw=' + (t.width || 1.5) + ', ' + ls + mk + ', label=' + (t.hideLeg ? '"_nolegend_"' : pyStr(labelPy(t.name || t.expr))) + ')');
+                body.push((isTop(traces[k]) ? 'ax2' : 'ax') + '.plot(__cv[' + k + '][0], __cv[' + k + '][1], color=' + pyStr(t.color || '#1F5FAE') + ', lw=' + (t.width || 1.5) + ', ' + ls + mk + ', label=' + (t.hideLeg ? '"_nolegend_"' : pyStr(labelPy(t.name || t.expr))) + ')');
               });
               body.push('ax.set_xlabel(' + pyStr(labelPy(r.xlabel)) + '); ax.set_ylabel(' + pyStr(labelPy(r.ylabel)) + ')');
               if (r.xlog) body.push("ax.set_xscale('log')");
@@ -875,7 +887,18 @@
                 else if (fmt === 'si') body.push('ax.' + ax2 + '.set_major_formatter(__mt.EngFormatter())');
                 if (fmt) usesMT = true;
               }
+              const colr = (axn, side, xy, c) => { if (c) body.push(axn + ".spines['" + side + "'].set_color(" + pyStr(c) + "); " + axn + ".tick_params(axis='" + xy + "', colors=" + pyStr(c) + '); ' + axn + '.' + xy + 'axis.label.set_color(' + pyStr(c) + ')'); };
+              colr('ax', 'bottom', 'x', r.xcolor); colr('ax', 'left', 'y', r.ycolor);
+              if (isConv) {
+                const m1 = dx1 ? ' * (' + dx1 + ')' : '', m2 = dx2 ? ' / (' + dx2 + ')' : '', i2 = dx2 ? ' * (' + dx2 + ')' : '', i1 = dx1 ? ' / (' + dx1 + ')' : '';
+                body.push('__sec = ax.secondary_xaxis(\'top\', functions=(lambda x: __cima(x' + m1 + ')' + m2 + ', lambda v: __baixo(v' + i2 + ')' + i1 + '))');
+                body.push('__sec.set_xlabel(' + pyStr(labelPy(r.x2label)) + ')');
+                if (!String(r.x2ticks || '').trim() && r._data && r._data.conv) body.push('__sec.set_xticks([' + r._data.conv.ticktext.map((v) => String(v).replace(',', '.')).join(', ') + '])');
+                if (String(r.x2ticks || '').trim()) body.push('__sec.set_xticks([' + String(r.x2ticks).split(/[;,\s]+/).filter(Boolean).map((v) => E.expr(parse(v)) + (dx2 ? ' / (' + dx2 + ')' : '')).join(', ') + '])');
+                colr('__sec', 'top', 'x', r.x2color);
+              }
               if (hasTop) {
+                colr('ax2', 'top', 'x', r.x2color);
                 { const k2 = traces.findIndex((q) => isTop(q) && q.kind === 'own'); if (k2 >= 0 && !(String(r.x2lo || '').trim() && String(r.x2hi || '').trim())) body.push('if __cv[' + k2 + '][0][0] > __cv[' + k2 + '][0][-1]: ax2.invert_xaxis()  ' + C('eixo superior na ordem do intervalo pedido')); }
                 body.push('ax2.set_xlabel(' + pyStr(labelPy(r.x2label)) + ')');
                 if (r.x2log) body.push("ax2.set_xscale('log')");
@@ -903,6 +926,7 @@
                 else if (r.norm === 'common' && r.normRef === 'value') body.push('y__ = y__ / (' + E.expr(parse(r.normVal || '1')) + ');');
                 { const dd = t.txpos === 'top' ? r.x2dv : r.xdv; if (String(dd ?? '').trim()) X = '(' + X + ') / (' + E.expr(parse(dd)) + ')'; }
                 if (t.txpos === 'top') E.warn.add('MATLAB: curvas do eixo x superior foram desenhadas no eixo principal (o Python exporta o eixo superior).');
+                if (r.x2mode === 'conv') E.warn.add('MATLAB: o eixo superior por conversão não foi exportado (use o Python).');
                 body.push('plot(' + X + ', y__, ' + "'Color', [" + rgb(t.color) + "], 'LineWidth', " + (t.width || 1.5) + ", 'LineStyle', '" + (DASH_M[t.dash] || '-') + "', 'DisplayName', " + mStr(t.name || t.expr) + ');');
               });
               if (r.norm === 'common' && r.normRef !== 'value') E.warn.add('MATLAB: a normalização comum pelo máximo não foi exportada (use o Python).');

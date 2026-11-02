@@ -10,8 +10,8 @@ android {
         applicationId "com.tiago.folhadecalculo"
         minSdk 26
         targetSdk 36
-        versionCode 17
-        versionName "0.9.6"
+        versionCode 18
+        versionName "0.9.7"
     }
 
     // assinatura fixa: o APK gerado no notebook ou no GitHub é o mesmo app
