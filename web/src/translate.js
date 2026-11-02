@@ -826,9 +826,9 @@
             const traces = tl.map((t) => {
               const kind = t.kind || 'func';
               if (kind === 'func' && t.xown) {
-                const tv = String(t.txvar || xv).trim(), has = (v) => String(v ?? '').trim() !== '';
+                const R = FC.ownRange(r, t), tv = R.v;
                 E.locals = new Set([tv]); const ex = E.expr(parse(withDiv(t.expr, t.div))); E.locals = prev;
-                return { t, kind: 'own', ex, tv, ta: E.expr(parse(has(t.txmin) ? t.txmin : r.xmin || '0')), tb: E.expr(parse(has(t.txmax) ? t.txmax : r.xmax || '1')), tn: Math.max(2, Math.round(Number(t.tn) || Number(r.npts) || 400)) };
+                return { t, kind: 'own', ex, tv, ta: E.expr(parse(String(R.a ?? '').trim() || '0')), tb: E.expr(parse(String(R.b ?? '').trim() || '1')), tn: Math.max(2, Math.round(Number(R.n) || 400)) };
               }
               if (kind === 'func') { E.locals = new Set([xv]); const ex = E.expr(parse(withDiv(t.expr, t.div))); E.locals = prev; return { t, kind, ex }; }
               if (kind === 'param') { const pv = String(t.pvar || 't').trim(); E.locals = new Set([pv]); const ex = E.expr(parse(withDiv(t.expr, t.div))), xx = E.expr(parse(t.xexpr || '0')); E.locals = prev; return { t, kind, ex, xx, pv, pa: E.expr(parse(t.pmin)), pb: E.expr(parse(t.pmax)), pn: Math.max(2, Math.round(Number(t.pn) || 300)) }; }

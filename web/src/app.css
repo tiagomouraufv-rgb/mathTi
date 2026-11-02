@@ -345,3 +345,20 @@ textarea.src.small { min-height: 90px; }
 .eq-nw .katex, .eq-nw .katex-html { white-space: nowrap; }
 .ml-desc { display: block; font-size: 12px; color: var(--muted); white-space: normal; margin-top: -2px; }
 @media (max-width: 1150px) { #hdrSaveAs { font-size: 0; gap: 0; padding: 0 10px; } }
+/* 0.9.6 — formulário do gráfico em abas */
+.form { container-type: inline-size; }
+@container (max-width: 520px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fld.span4, .fld.span2 { grid-column: 1 / -1; } }
+.ftabs { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-end; border-bottom: 1px solid var(--line); margin: 0 0 10px; position: relative; }
+.ftab { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 1px solid transparent; border-bottom: 0; border-radius: 7px 7px 0 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; margin-bottom: -1px; max-width: 100%; }
+.ftab:hover { color: var(--ink); background: var(--soft); }
+.ftab.on { color: var(--accent); background: var(--page); border-color: var(--line); }
+.ftab .fsub { font-weight: 400; font-size: 12px; color: var(--muted); max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ftab .fdot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.ftab.fplus { color: var(--accent); border: 1px dashed var(--accent); border-bottom: 0; }
+.fmenu { position: absolute; z-index: 30; top: 100%; right: 0; background: var(--page); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); display: flex; flex-direction: column; padding: 4px; min-width: 240px; }
+.fmenu button { text-align: left; padding: 9px 12px; border: 0; background: transparent; font: inherit; font-size: 14px; border-radius: 6px; cursor: pointer; color: var(--ink); }
+.fmenu button:hover { background: var(--accent-soft); }
+.fpane .trow { margin-bottom: 6px; }
+.fpane .fbtns { margin-top: 8px; }
+.btn.danger { color: var(--err); }
+.fpane .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }

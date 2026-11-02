@@ -117,6 +117,18 @@
   }
   const withDiv = (e, dv) => (String(dv || '').trim() ? '(' + e + ')/(' + dv + ')' : e);
   const finiteMax = (ys) => { let m = 0; for (const y of ys) if (isFinite(y) && Math.abs(y) > m) m = Math.abs(y); return m; };
+  /* intervalo de x de uma curva com eixo próprio; xlink = usar o intervalo de outra curva */
+  FC.ownRange = function (r, t) {
+    const has = (v) => String(v ?? '').trim() !== '';
+    let s = t; const seen = new Set();
+    while (s && s.xlink != null && r.traces[s.xlink] && r.traces[s.xlink] !== s && !seen.has(s.xlink)) {
+      seen.add(s.xlink);
+      const n = r.traces[s.xlink];
+      if (!n.xown) return { v: String(r.xvar || 'x').trim(), a: r.xmin, b: r.xmax, n: Number(r.npts) || 400 };
+      s = n;
+    }
+    return { v: String(s.txvar || r.xvar || 'x').trim(), a: has(s.txmin) ? s.txmin : r.xmin, b: has(s.txmax) ? s.txmax : r.xmax, n: Number(s.tn) || Number(r.npts) || 400 };
+  };
   function computeXY(S, r) {
     let xs = null;
     const getXs = () => xs || (xs = xValues(S, r, 400));
@@ -146,12 +158,12 @@
           traces.push({ t, xs: X, ys: Y, idx });
         } else if (t.xown) {
           // eixo x próprio: variável, intervalo e número de pontos desta curva
-          const tv = String(t.txvar || r.xvar || 'x').trim();
+          const R = FC.ownRange(r, t), tv = R.v;
           const has = (v) => String(v ?? '').trim() !== '';
           const top = t.txpos === 'top';
-          const a = S.evalScalar(has(t.txmin) ? t.txmin : (has(r.xmin) ? r.xmin : NaN)), b = S.evalScalar(has(t.txmax) ? t.txmax : (has(r.xmax) ? r.xmax : NaN));
+          const a = S.evalScalar(has(R.a) ? R.a : NaN), b = S.evalScalar(has(R.b) ? R.b : NaN);
           if (!isFinite(a) || !isFinite(b)) throw new Error('preencha mínimo e máximo de ' + tv + ' (eixo x próprio da curva).');
-          const n = Math.max(2, Math.round(Number(t.tn) || Number(r.npts) || 400));
+          const n = Math.max(2, Math.round(Number(R.n) || 400));
           const lg = (top ? r.x2log : r.xlog) && a > 0 && b > 0;
           const code = S.compileExpr(withDiv(t.expr, t.div));
           const ov = new FC.Overlay(S.scope), X = [], Y = [];

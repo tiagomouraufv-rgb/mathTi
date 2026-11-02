@@ -3,7 +3,7 @@
 (function () {
   const FC = window.FC;
   const M = FC.M;
-  const VERSION = '0.9.5';
+  const VERSION = '0.9.6';
   FC.VERSION = VERSION;
   const $ = (sel, el) => (el || document).querySelector(sel);
   const h = (tag, attrs, ...kids) => {
@@ -612,95 +612,171 @@
   }
   const FMT_OPTS = [['', 'automático'], ['dec', 'decimal'], ['sci', 'científico (1.5e+3)'], ['pow', 'potência de 10'], ['si', 'prefixos SI (k, M, µ)']];
   function axisFmt(r, k) { return [field('Números', sel(r, k + 'fmt', FMT_OPTS)), field('Casas decimais', inp(r, k + 'dec', { ph: 'auto', num: true })), field('Passo das marcas', inp(r, k + 'step', { ph: 'auto', num: true }))]; }
+  /* ---------- formulário do gráfico XY em abas: Geral · Eixos · uma aba por curva · + Curva ---------- */
+  const formTab = new Map(); // aba aberta em cada gráfico (sobrevive a desfazer/refazer)
   function formXY(r, f) {
-    const tr = h('div', { class: 'traces' });
     const KINDS = [['func', 'y(x): função da variável do eixo x'], ['param', 'uma função em função de outra (parâmetro comum)'], ['data', 'dados: vetores x e y (ex.: tabela)']];
-    const tin = (t, key, ph, cls) => { const e = h('input', { type: 'text', value: t[key] ?? '', placeholder: ph || '', spellcheck: 'false', autocapitalize: 'off', class: cls || null }); e.addEventListener('input', () => { t[key] = e.value; markDirty(); }); return e; };
-    const drawTraces = () => {
-      tr.innerHTML = '';
-      r.traces.forEach((t, i) => {
-        const kind = t.kind || 'func';
-        const kd = h('select', { 'aria-label': 'Tipo de curva', onchange: (e) => { t.kind = e.target.value; if (t.kind === 'data' && (!t.marker || t.marker === 'none')) { t.marker = 'circle'; t.lines = false; } drawTraces(); markDirty(); } }, ...KINDS.map(([v, l]) => h('option', { value: v, selected: kind === v ? 'selected' : null }, l)));
-        const nm = h('input', { type: 'text', value: t.name || '', placeholder: 'legenda (aceita \\psi_n, λ_0, x^2)', oninput: (e) => { t.name = e.target.value; markDirty(); } });
-        const show = h('input', { type: 'checkbox' }); show.checked = !t.hideLeg; show.addEventListener('change', () => { t.hideLeg = !show.checked; markDirty(); });
-        const col = h('input', { type: 'color', value: t.color || FC.PALETTE[i % FC.PALETTE.length], 'aria-label': 'Cor', oninput: (e) => { t.color = e.target.value; markDirty(); } });
-        const wd = h('input', { type: 'range', min: '0.5', max: '4', step: '0.25', value: t.width || 1.5, 'aria-label': 'Espessura', oninput: (e) => { t.width = Number(e.target.value); wv.textContent = t.width; markDirty(); } });
-        const wv = h('span', { class: 'wv' }, String(t.width || 1.5));
-        const ds = h('select', { 'aria-label': 'Estilo da linha', onchange: (e) => { t.dash = e.target.value; markDirty(); } }, ...[['solid', 'contínua'], ['dash', 'tracejada'], ['dot', 'pontilhada'], ['dashdot', 'traço-ponto']].map(([v, l]) => h('option', { value: v, selected: t.dash === v ? 'selected' : null }, l)));
-        const mk = h('select', { 'aria-label': 'Marcador', onchange: (e) => { t.marker = e.target.value; markDirty(); } }, ...[['none', 'sem marcador'], ['circle', '●'], ['square', '■'], ['triangle-up', '▲'], ['diamond', '◆'], ['circle-open', '○'], ['square-open', '□']].map(([v, l]) => h('option', { value: v, selected: t.marker === v ? 'selected' : null }, l)));
-        const ln = h('input', { type: 'checkbox' }); ln.checked = t.lines !== false; ln.addEventListener('change', () => { t.lines = ln.checked; markDirty(); });
-        const del = h('button', { class: 'ib danger', 'aria-label': 'Remover curva', onclick: () => { r.traces.splice(i, 1); drawTraces(); markDirty(); } }, icon(IC.trash));
-        const cpy = h('button', { class: 'btn small', onclick: () => { styleClip = { color: t.color, width: t.width, dash: t.dash, marker: t.marker, lines: t.lines }; toast('Estilo da curva copiado.'); } }, 'Copiar estilo');
-        const pst = h('button', { class: 'btn small', onclick: () => { if (!styleClip) return toast('Copie o estilo de uma curva antes.'); Object.assign(t, styleClip); drawTraces(); markDirty(); } }, 'Colar estilo');
-        let rows;
-        if (kind === 'param') rows = [
-          h('div', { class: 'trow' }, field('Eixo x: função', tin(t, 'xexpr', 'N_T(I_P)', 'cexpr'), 'grow'), field('Eixo y: função', tin(t, 'expr', 'κ(I_P)', 'cexpr'), 'grow')),
-          h('div', { class: 'trow' }, field('Parâmetro comum', tin(t, 'pvar', 'I_P')), field('de', tin(t, 'pmin', '0')), field('até', tin(t, 'pmax', '10')), field('pontos', tin(t, 'pn', '300')))];
-        else if (kind === 'data') rows = [h('div', { class: 'trow' }, field('x (vetor)', tin(t, 'xexpr', 'DADO[0]', 'cexpr'), 'grow'), field('y (vetor)', tin(t, 'expr', 'DADO[1]', 'cexpr'), 'grow'))];
-        else rows = [h('div', { class: 'trow' }, field('Curva ' + (i + 1) + ': y(' + (t.xown ? (t.txvar || r.xvar || 'x') : (r.xvar || 'x')) + ')', tin(t, 'expr', 'f(x)', 'cexpr'), 'grow'))];
-        // eixo x desta curva: o principal (embaixo) ou um eixo superior independente; intervalo próprio
-        const xp = h('select', { 'aria-label': 'Eixo x desta curva', onchange: (e) => { t.txpos = e.target.value; if (t.txpos === 'top' && kind === 'func' && !t.xown) t.xown = true; drawTraces(); drawTop(); markDirty(); } },
-          ...[['', 'eixo x principal (embaixo)'], ['top', 'eixo x superior (independente)']].map(([v, l]) => h('option', { value: v, selected: (t.txpos || '') === v ? 'selected' : null }, l)));
-        const xo = h('input', { type: 'checkbox' }); xo.checked = !!t.xown; xo.addEventListener('change', () => { t.xown = xo.checked; drawTraces(); markDirty(); });
-        const xrows = [h('div', { class: 'trow' }, field('Eixo x desta curva', xp, 'grow'), kind === 'func' ? h('label', { class: 'chk' }, xo, ' variável, intervalo e pontos próprios') : null)];
-        if (kind === 'func' && t.xown) xrows.push(h('div', { class: 'trow' }, field('Variável', tin(t, 'txvar', r.xvar || 'x')), field('de', tin(t, 'txmin', String(r.xmin || 'mín. do eixo'))), field('até', tin(t, 'txmax', String(r.xmax || 'máx. do eixo'))), field('pontos', tin(t, 'tn', String(r.npts || 400)))));
-        tr.append(h('div', { class: 'trace' + (t.txpos === 'top' ? ' trace-xtop' : '') },
-          h('div', { class: 'trow' }, field('Curva ' + (i + 1) + ' — tipo', kd, 'grow')),
-          ...rows, ...xrows,
-          h('div', { class: 'trow' }, field('Dividir por (opcional)', tin(t, 'div', 'ex.: k_B·295 K, 2, máximo teórico'), 'grow'), field('Legenda', nm, 'grow'), h('label', { class: 'chk' }, show, ' na legenda')),
-          h('div', { class: 'trow' }, col, h('span', { class: 'lbl' }, 'espessura'), wd, wv, ds, mk, h('label', { class: 'chk' }, ln, ' ligar pontos'), del),
-          h('div', { class: 'trow' }, cpy, pst)));
-      });
+    const tin = (t, key, ph, cls) => { const e = h('input', { type: 'text', value: t[key] ?? '', placeholder: ph || '', spellcheck: 'false', autocapitalize: 'off', class: cls || null }); e.addEventListener('input', () => { t[key] = e.value; markDirty(); if (key === 'expr' || key === 'name') paintTabs(); }); return e; };
+    const tabs = h('div', { class: 'ftabs', role: 'tablist', 'aria-label': 'Partes do gráfico' });
+    const pane = h('div', { class: 'fpane', role: 'tabpanel' });
+    let cur = formTab.get(r.id) ?? 'geral';
+    if (typeof cur === 'number' && !r.traces[cur]) cur = r.traces.length ? r.traces.length - 1 : 'geral';
+    const go = (k) => { cur = k; formTab.set(r.id, k); paintTabs(); paintPane(); };
+    const short = (t) => { const s = String(t.name || t.expr || '').trim(); return s.length > 14 ? s.slice(0, 13) + '…' : s; };
+    let menu = null;
+    const closeMenu = () => { if (menu) { menu.remove(); menu = null; } };
+    const add = (kind) => {
+      closeMenu();
+      const n = r.traces.length;
+      r.traces.push({ kind, expr: '', xexpr: '', name: '', color: FC.PALETTE[n % FC.PALETTE.length], width: 1.5, dash: 'solid', marker: kind === 'data' ? 'circle' : 'none', lines: kind !== 'data', pvar: kind === 'param' ? '' : undefined });
+      markDirty(false); go(n);
+      setTimeout(() => { const e = pane.querySelector('input.cexpr'); if (e) e.focus(); }, 30);
     };
-    const topBox = h('div');
-    const drawTop = () => {
-      topBox.innerHTML = '';
-      if (!r.traces.some((t) => t.txpos === 'top')) return;
-      topBox.append(h('div', { class: 'fsec' }, 'Eixo x superior (curvas com eixo independente)'),
-        h('div', { class: 'grid4' }, field('Rótulo x superior', inp(r, 'x2label', { ph: 'λ (nm)' }), 'span2'), field('Escala log', inp(r, 'x2log', { type: 'checkbox' })), field('Dividir x sup. por', inp(r, 'x2dv', { ph: 'ex.: 1000' }))),
+    const paintTabs = () => {
+      tabs.innerHTML = '';
+      const tb = (k, label, extra) => { const b = h('button', { type: 'button', role: 'tab', class: 'ftab' + (cur === k ? ' on' : ''), 'aria-selected': cur === k ? 'true' : 'false', onclick: () => go(k) }, ...(extra || []), label); return b; };
+      tabs.append(tb('geral', 'Geral'), tb('eixos', 'Eixos'));
+      r.traces.forEach((t, i) => {
+        const dot = h('span', { class: 'fdot', style: 'background:' + (t.color || FC.PALETTE[i % FC.PALETTE.length]) + (t.dash && t.dash !== 'solid' ? ';opacity:.6' : '') });
+        const b = tb(i, 'Curva ' + (i + 1), [dot]);
+        const s = short(t); if (s) b.append(h('span', { class: 'fsub' }, s));
+        if (t.txpos === 'top') b.append(h('span', { class: 'fsub' }, '↑'));
+        tabs.append(b);
+      });
+      const plus = h('button', { type: 'button', class: 'ftab fplus', title: 'Nova curva', onclick: (e) => {
+        e.stopPropagation();
+        if (menu) return closeMenu();
+        menu = h('div', { class: 'fmenu', role: 'menu' },
+          h('button', { type: 'button', role: 'menuitem', onclick: () => add('func') }, 'Curva y(x)'),
+          h('button', { type: 'button', role: 'menuitem', onclick: () => add('param') }, 'Função × função (parâmetro comum)'),
+          h('button', { type: 'button', role: 'menuitem', onclick: () => add('data') }, 'Dados (tabela)'));
+        plus.after(menu);
+        setTimeout(() => document.addEventListener('pointerdown', function off(ev) { if (!menu || !menu.contains(ev.target)) { closeMenu(); document.removeEventListener('pointerdown', off, true); } }, true), 0);
+      } }, icon(IC.plus, 15), 'Curva');
+      tabs.append(plus);
+    };
+    // remove a curva i sem quebrar as que usavam o intervalo dela
+    const removeTrace = (i) => {
+      const gone = r.traces[i];
+      r.traces.forEach((q, j) => {
+        if (j === i || q.xlink == null) return;
+        if (q.xlink === i) { const R = FC.ownRange(r, q); q.xlink = null; q.xown = true; q.txvar = R.v; q.txmin = R.a; q.txmax = R.b; q.tn = R.n; }
+        else if (q.xlink > i) q.xlink--;
+      });
+      r.traces.splice(i, 1);
+      if (gone) { /* nada */ }
+      markDirty(); go(r.traces.length ? Math.min(i, r.traces.length - 1) : 'geral');
+    };
+    const curvePane = (i) => {
+      const t = r.traces[i], kind = t.kind || 'func';
+      const kd = h('select', { 'aria-label': 'Tipo de curva', onchange: (e) => { t.kind = e.target.value; if (t.kind === 'data' && (!t.marker || t.marker === 'none')) { t.marker = 'circle'; t.lines = false; } markDirty(); paintPane(); } }, ...KINDS.map(([v, l]) => h('option', { value: v, selected: kind === v ? 'selected' : null }, l)));
+      const out = [FC.uiExt.fnChips(null, { data: true }), h('div', { class: 'grid4' }, field('Tipo', kd, 'span4'))];
+      const R = FC.ownRange(r, t);
+      const xv = kind === 'func' && t.xown ? R.v : (r.xvar || 'x');
+      if (kind === 'param') out.push(
+        h('div', { class: 'grid4' }, field('Eixo x: função', tin(t, 'xexpr', 'N_T(I_P)', 'cexpr'), 'span2'), field('Eixo y: função', tin(t, 'expr', 'κ(I_P)', 'cexpr'), 'span2')),
+        h('div', { class: 'grid4' }, field('Parâmetro comum', tin(t, 'pvar', 'I_P')), field('de', tin(t, 'pmin', '0')), field('até', tin(t, 'pmax', '10')), field('pontos', tin(t, 'pn', '300'))));
+      else if (kind === 'data') out.push(h('div', { class: 'grid4' }, field('x (vetor)', tin(t, 'xexpr', 'DADO[0]', 'cexpr'), 'span2'), field('y (vetor)', tin(t, 'expr', 'DADO[1]', 'cexpr'), 'span2')));
+      else out.push(h('div', { class: 'grid4' }, field('y(' + xv + ')', tin(t, 'expr', 'f(' + xv + ')', 'cexpr'), 'span4')));
+      // eixo x desta curva e de onde vem o intervalo
+      const xp = h('select', { 'aria-label': 'Eixo x desta curva', onchange: (e) => {
+        t.txpos = e.target.value;
+        if (t.txpos === 'top' && kind === 'func' && !t.xown) {
+          // por padrão usa o intervalo da última curva do eixo superior; se não houver, um novo
+          let j = -1; for (let q = i - 1; q >= 0; q--) if (r.traces[q].txpos === 'top' && r.traces[q].xown && (r.traces[q].kind || 'func') === 'func') { j = q; break; }
+          t.xown = true; t.xlink = j >= 0 ? j : null;
+        }
+        markDirty(); paintTabs(); paintPane();
+      } }, ...[['', 'principal (embaixo)'], ['top', 'superior (independente)']].map(([v, l]) => h('option', { value: v, selected: (t.txpos || '') === v ? 'selected' : null }, l)));
+      const xrow = [field('Eixo x desta curva', xp, 'span2')];
+      if (kind === 'func') {
+        const opts = [['main', 'o do eixo principal (aba Eixos)'], ['own', 'novo, só desta curva']];
+        for (let j = 0; j < i; j++) { const q = r.traces[j]; if ((q.kind || 'func') === 'func' && q.xown) opts.push(['c' + j, 'o mesmo da Curva ' + (j + 1) + ' (' + FC.ownRange(r, q).v + ')']); }
+        const val = !t.xown ? 'main' : t.xlink != null && r.traces[t.xlink] ? 'c' + t.xlink : 'own';
+        const src = h('select', { 'aria-label': 'Intervalo de x desta curva', onchange: (e) => {
+          const v = e.target.value;
+          if (v === 'main') { t.xown = false; t.xlink = null; }
+          else if (v === 'own') { if (t.xlink != null) { const Q = FC.ownRange(r, t); t.txvar = Q.v; t.txmin = Q.a; t.txmax = Q.b; t.tn = Q.n; } t.xown = true; t.xlink = null; }
+          else { t.xown = true; t.xlink = Number(v.slice(1)); }
+          markDirty(); paintPane();
+        } }, ...opts.map(([v, l]) => h('option', { value: v, selected: v === val ? 'selected' : null }, l)));
+        xrow.push(field('Intervalo de x', src, 'span2'));
+      }
+      out.push(h('div', { class: 'grid4' }, ...xrow));
+      if (kind === 'func' && t.xown && t.xlink == null) out.push(h('div', { class: 'grid4' }, field('Variável', tin(t, 'txvar', r.xvar || 'x')), field('de', tin(t, 'txmin', String(r.xmin || 'mín.'))), field('até', tin(t, 'txmax', String(r.xmax || 'máx.'))), field('pontos', tin(t, 'tn', String(r.npts || 400)))));
+      else if (kind === 'func' && t.xown) out.push(h('p', { class: 'hint' }, 'Usa ' + R.v + ' de ' + R.a + ' até ' + R.b + ' (' + R.n + ' pontos), como a Curva ' + (t.xlink + 1) + '. Mudou lá, muda aqui.'));
+      if (t.txpos === 'top') out.push(h('p', { class: 'hint' }, 'Rótulo, limites e escala do eixo superior ficam na aba Eixos.'));
+      // aparência
+      const nm = h('input', { type: 'text', value: t.name || '', placeholder: 'aceita \\psi_n, λ_0, x^2', oninput: (e) => { t.name = e.target.value; markDirty(); paintTabs(); } });
+      const show = h('input', { type: 'checkbox' }); show.checked = !t.hideLeg; show.addEventListener('change', () => { t.hideLeg = !show.checked; markDirty(); });
+      const col = h('input', { type: 'color', value: t.color || FC.PALETTE[i % FC.PALETTE.length], 'aria-label': 'Cor', oninput: (e) => { t.color = e.target.value; markDirty(); paintTabs(); } });
+      const wv = h('span', { class: 'wv' }, String(t.width || 1.5));
+      const wd = h('input', { type: 'range', min: '0.5', max: '4', step: '0.25', value: t.width || 1.5, 'aria-label': 'Espessura', oninput: (e) => { t.width = Number(e.target.value); wv.textContent = t.width; markDirty(); } });
+      const ds = h('select', { 'aria-label': 'Estilo da linha', onchange: (e) => { t.dash = e.target.value; markDirty(); paintTabs(); } }, ...[['solid', 'contínua'], ['dash', 'tracejada'], ['dot', 'pontilhada'], ['dashdot', 'traço-ponto']].map(([v, l]) => h('option', { value: v, selected: t.dash === v ? 'selected' : null }, l)));
+      const mk = h('select', { 'aria-label': 'Marcador', onchange: (e) => { t.marker = e.target.value; markDirty(); } }, ...[['none', 'sem marcador'], ['circle', '●'], ['square', '■'], ['triangle-up', '▲'], ['diamond', '◆'], ['circle-open', '○'], ['square-open', '□']].map(([v, l]) => h('option', { value: v, selected: t.marker === v ? 'selected' : null }, l)));
+      const ln = h('input', { type: 'checkbox' }); ln.checked = t.lines !== false; ln.addEventListener('change', () => { t.lines = ln.checked; markDirty(); });
+      out.push(h('div', { class: 'fsec' }, 'Aparência'),
+        h('div', { class: 'grid4' }, field('Nome na legenda', nm, 'span2'), field('Dividir por', tin(t, 'div', 'ex.: k_B·295 K'), 'span2')),
+        h('div', { class: 'trow' }, h('label', { class: 'chk' }, show, ' na legenda'), col, h('span', { class: 'lbl' }, 'espessura'), wd, wv),
+        h('div', { class: 'trow' }, ds, mk, h('label', { class: 'chk' }, ln, ' ligar pontos')),
+        h('div', { class: 'trow fbtns' },
+          h('button', { class: 'btn small', onclick: () => { styleClip = { color: t.color, width: t.width, dash: t.dash, marker: t.marker, lines: t.lines }; toast('Estilo da curva copiado.'); } }, 'Copiar estilo'),
+          h('button', { class: 'btn small', onclick: () => { if (!styleClip) return toast('Copie o estilo de uma curva antes.'); Object.assign(t, styleClip); markDirty(); paintTabs(); paintPane(); } }, 'Colar estilo'),
+          h('button', { class: 'btn small', onclick: () => { const c = JSON.parse(JSON.stringify(t)); c.color = FC.PALETTE[r.traces.length % FC.PALETTE.length]; r.traces.splice(i + 1, 0, c); r.traces.forEach((q, j) => { if (j !== i + 1 && q.xlink != null && q.xlink > i) q.xlink++; }); markDirty(); go(i + 1); } }, 'Duplicar curva'),
+          h('button', { class: 'btn small danger', onclick: () => removeTrace(i) }, icon(IC.trash, 15), 'Remover')));
+      return out;
+    };
+    const eixosPane = () => {
+      const out = [
+        h('div', { class: 'fsec' }, 'Eixo x (embaixo)'),
+        h('div', { class: 'grid4' }, field('Variável', inp(r, 'xvar')), field('Mínimo', inp(r, 'xmin', { ph: 'da variável' })), field('Máximo', inp(r, 'xmax', { ph: 'da variável' })), field('Pontos', inp(r, 'npts', { type: 'number' }))),
+        h('div', { class: 'grid4' }, field('Rótulo x', inp(r, 'xlabel', { ph: 'E (eV)' }), 'span2'), field('Dividir x por', inp(r, 'xdv', { ph: 'ex.: 1000' })), field('Escala log', inp(r, 'xlog', { type: 'checkbox' }))),
+        h('div', { class: 'grid4' }, field('Mostrar x de', inp(r, 'xlo', { ph: 'auto' })), field('até', inp(r, 'xhi', { ph: 'auto' }))),
+        h('div', { class: 'grid4' }, ...axisFmt(r, 'x'))];
+      if (r.traces.some((t) => t.txpos === 'top')) out.push(
+        h('div', { class: 'fsec' }, 'Eixo x superior (independente)'),
+        h('div', { class: 'grid4' }, field('Rótulo x superior', inp(r, 'x2label', { ph: 'λ (nm)' }), 'span2'), field('Dividir x sup. por', inp(r, 'x2dv', { ph: 'ex.: 1000' })), field('Escala log', inp(r, 'x2log', { type: 'checkbox' }))),
         h('div', { class: 'grid4' }, field('Mostrar x sup. de', inp(r, 'x2lo', { ph: 'auto' })), field('até', inp(r, 'x2hi', { ph: 'auto' }))),
         h('div', { class: 'grid4' }, ...axisFmt(r, 'x2')));
+      out.push(
+        h('div', { class: 'fsec' }, 'Eixo y'),
+        h('div', { class: 'grid4' }, field('Rótulo y', inp(r, 'ylabel'), 'span2'), field('Escala log', inp(r, 'ylog', { type: 'checkbox' }))),
+        h('div', { class: 'grid4' }, field('y mínimo', inp(r, 'ymin', { ph: 'auto' })), field('y máximo', inp(r, 'ymax', { ph: 'auto' }))),
+        h('div', { class: 'grid4' }, ...axisFmt(r, 'y')),
+        h('p', { class: 'hint' }, 'O eixo segue a ordem do intervalo: de 1240 até 310 desenha 1240 à esquerda. Rótulos aceitam _ (subscrito), ^ (sobrescrito) e nomes LaTeX: λ_{OT}, k_{B}T, x^2.'));
+      return out;
     };
-    drawTraces(); drawTop();
-    const add = (kind) => { const n = r.traces.length; r.traces.push({ kind, expr: '', xexpr: '', name: '', color: FC.PALETTE[n % FC.PALETTE.length], width: 1.5, dash: 'solid', marker: kind === 'data' ? 'circle' : 'none', lines: kind !== 'data', pvar: kind === 'param' ? '' : undefined }); drawTraces(); markDirty(false); };
-    const normBox = h('div');
-    const drawNorm = () => {
-      normBox.innerHTML = '';
-      if (r.norm === 'common') normBox.append(h('div', { class: 'grid4' }, field('Dividir todas por', sel(r, 'normRef', [['max', 'o maior valor entre todas'], ['curve', 'o máximo de uma curva'], ['value', 'um valor que eu informo']], drawNorm), 'span2'),
-        r.normRef === 'curve' ? field('Número da curva', inp(r, 'normCurve', { ph: '1', num: true })) : r.normRef === 'value' ? field('Valor (aceita expressão)', inp(r, 'normVal', { ph: 'k_B·295 K' })) : h('span')));
+    const geralPane = () => {
+      const normBox = h('div'), legBox = h('div');
+      const drawNorm = () => {
+        normBox.innerHTML = '';
+        if (r.norm === 'common') normBox.append(h('div', { class: 'grid4' }, field('Dividir todas por', sel(r, 'normRef', [['max', 'o maior valor entre todas'], ['curve', 'o máximo de uma curva'], ['value', 'um valor que eu informo']], drawNorm), 'span2'),
+          r.normRef === 'curve' ? field('Número da curva', inp(r, 'normCurve', { ph: '1', num: true })) : r.normRef === 'value' ? field('Valor (aceita expressão)', inp(r, 'normVal', { ph: 'k_B·295 K' })) : h('span')));
+      };
+      const drawLeg = () => {
+        legBox.innerHTML = '';
+        if (r.legend === 'manual') legBox.append(h('div', { class: 'grid4' }, field('x da legenda (0 a 1)', inp(r, 'legX', { ph: '0.02', num: true })), field('y da legenda (0 a 1)', inp(r, 'legY', { ph: '0.98', num: true }))));
+      };
+      drawNorm(); drawLeg();
+      return [
+        h('div', { class: 'fsec' }, 'Estilo'),
+        h('div', { class: 'grid4' }, field('Estilo de revista', sel(r, 'preset', presetOpts()), 'span2'), field('Painel', inp(r, 'panel', { ph: '(a)' })), field('Vírgula decimal', inp(r, 'comma', { type: 'checkbox' }))),
+        h('div', { class: 'grid4' }, field('Marcas menores', sel(r, 'minor', [['', 'sim'], ['false', 'não']]))),
+        h('div', { class: 'fsec' }, 'Legenda das curvas'),
+        h('div', { class: 'grid4' }, field('Posição', sel(r, 'legend', [['sup-esq', 'sup. esquerda'], ['sup-dir', 'sup. direita'], ['inf-esq', 'inf. esquerda'], ['inf-dir', 'inf. direita'], ['fora', 'fora do gráfico'], ['manual', 'onde eu arrastar'], ['nao', 'sem legenda']], drawLeg)), field('Caixa', inp(r, 'legBox', { type: 'checkbox' })), field('Horizontal', inp(r, 'legHoriz', { type: 'checkbox' })), field('Tamanho (×)', inp(r, 'legSize', { ph: '0.95', num: true }))),
+        legBox,
+        h('div', { class: 'fsec' }, 'Normalização (todas as curvas)'),
+        h('div', { class: 'grid4' }, field('Normalizar', sel(r, 'norm', [['', 'não'], ['each', 'cada curva pelo seu máximo'], ['common', 'todas pelo mesmo valor']], drawNorm), 'span4')),
+        normBox,
+        h('p', { class: 'hint' }, 'No gráfico: arraste a legenda e a letra do painel; toque no nome de uma curva ou no título de um eixo para editar. A legenda da figura (caption) é o botão Leg. no cabeçalho.')];
     };
-    drawNorm();
-    const legBox = h('div');
-    const drawLeg = () => {
-      legBox.innerHTML = '';
-      if (r.legend === 'manual') legBox.append(h('div', { class: 'grid4' }, field('x da legenda (0 a 1)', inp(r, 'legX', { ph: '0.02', num: true })), field('y da legenda (0 a 1)', inp(r, 'legY', { ph: '0.98', num: true }))));
+    const paintPane = () => {
+      pane.innerHTML = '';
+      const parts = cur === 'geral' ? geralPane() : cur === 'eixos' ? eixosPane() : r.traces[cur] ? curvePane(cur) : geralPane();
+      pane.append(...parts.filter(Boolean));
     };
-    drawLeg();
-    f.append(
-      FC.uiExt.fnChips(null, { data: true }),
-      h('div', { class: 'fsec' }, 'Curvas'), tr,
-      h('div', { class: 'trow' },
-        h('button', { class: 'btn small', onclick: () => add('func') }, icon(IC.plus, 16), 'Curva y(x)'),
-        h('button', { class: 'btn small', onclick: () => add('param') }, icon(IC.plus, 16), 'Função × função'),
-        h('button', { class: 'btn small', onclick: () => add('data') }, icon(IC.plus, 16), 'Dados (tabela)')),
-      h('div', { class: 'fsec' }, 'Eixo x'),
-      h('div', { class: 'grid4' }, field('Variável', inp(r, 'xvar')), field('Mínimo', inp(r, 'xmin', { ph: 'da variável' })), field('Máximo', inp(r, 'xmax', { ph: 'da variável' })), field('Pontos', inp(r, 'npts', { type: 'number' }))),
-      h('div', { class: 'grid4' }, field('Rótulo x', inp(r, 'xlabel', { ph: 'λ_OT (nm)' }), 'span2'), field('Escala log', inp(r, 'xlog', { type: 'checkbox' })), field('Painel', inp(r, 'panel', { ph: '(a)' }))),
-      h('div', { class: 'grid4' }, field('Mostrar x de', inp(r, 'xlo', { ph: 'auto' })), field('até', inp(r, 'xhi', { ph: 'auto' })), field('Dividir x por', inp(r, 'xdv', { ph: 'ex.: 1000, E_0' }), 'span2')),
-      h('div', { class: 'grid4' }, ...axisFmt(r, 'x')),
-      topBox,
-      h('div', { class: 'fsec' }, 'Eixo y'),
-      h('div', { class: 'grid4' }, field('Rótulo y', inp(r, 'ylabel'), 'span2'), field('Escala log', inp(r, 'ylog', { type: 'checkbox' }))),
-      h('div', { class: 'grid4' }, field('y mínimo', inp(r, 'ymin', { ph: 'auto' })), field('y máximo', inp(r, 'ymax', { ph: 'auto' }))),
-      h('div', { class: 'grid4' }, ...axisFmt(r, 'y')),
-      h('div', { class: 'fsec' }, 'Normalização'),
-      h('div', { class: 'grid4' }, field('Normalizar', sel(r, 'norm', [['', 'não'], ['each', 'cada curva pelo seu máximo'], ['common', 'todas pelo mesmo valor']], drawNorm), 'span2')),
-      normBox,
-      h('div', { class: 'fsec' }, 'Legenda e aparência'),
-      h('div', { class: 'grid4' }, field('Posição da legenda', sel(r, 'legend', [['sup-esq', 'sup. esquerda'], ['sup-dir', 'sup. direita'], ['inf-esq', 'inf. esquerda'], ['inf-dir', 'inf. direita'], ['fora', 'fora do gráfico'], ['manual', 'onde eu arrastar'], ['nao', 'sem legenda']], drawLeg)), field('Caixa na legenda', inp(r, 'legBox', { type: 'checkbox' })), field('Legenda na horizontal', inp(r, 'legHoriz', { type: 'checkbox' })), field('Tamanho (×)', inp(r, 'legSize', { ph: '0.95', num: true }))),
-      legBox,
-      h('div', { class: 'grid4' }, field('Estilo de revista', sel(r, 'preset', presetOpts()), 'span2'), field('Vírgula decimal', inp(r, 'comma', { type: 'checkbox' })), field('Marcas menores', sel(r, 'minor', [['', 'sim'], ['false', 'não']]))),
-      h('p', { class: 'hint' }, 'No gráfico: arraste a legenda e a letra do painel para onde quiser; toque no nome de uma curva na legenda ou no título de um eixo para editar. Rótulos aceitam _ (subscrito), ^ (sobrescrito) e nomes LaTeX: \\psi_n, λ_{OT}, k_{B}T, x^2. “Dividir por” e “Normalizar” funcionam como no Origin (ex.: dividir por k_B·T).'));
+    paintTabs(); paintPane();
+    f.append(tabs, pane);
   }
   function formGrid(r, f) {
     const nb = h('div');
