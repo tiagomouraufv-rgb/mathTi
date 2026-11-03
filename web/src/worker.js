@@ -21,7 +21,11 @@ self.onmessage = function (ev) {
   if (!msg || msg.cmd !== 'calc') return;
   const t0 = Date.now();
   try {
-    const r = self.FC.computeSheet(msg.regions, (i, n) => { self.postMessage({ type: 'progress', job: msg.job, i, n }); }, msg.opts);
+    let cur = { i: 0, n: 1 }, last = 0;
+    // progresso dentro de um gráfico: pontos calculados de cada curva (no máximo 4 avisos por segundo)
+    self.FC._tick = (k, N, lab) => { const t = Date.now(); if (t - last < 250) return; last = t; self.postMessage({ type: 'progress', job: msg.job, i: cur.i, n: cur.n, k, N, lab }); };
+    const r = self.FC.computeSheet(msg.regions, (i, n) => { cur = { i, n }; last = 0; self.postMessage({ type: 'progress', job: msg.job, i, n }); }, msg.opts);
+    self.FC._tick = null;
     self.postMessage({ type: 'done', job: msg.job, results: r.results, errors: r.errors, warnings: r.warnings, tabCache: r.tabCache, tabFresh: r.tabFresh, ms: Date.now() - t0 });
   } catch (e) {
     self.postMessage({ type: 'fail', job: msg.job, err: String((e && e.message) || e) });

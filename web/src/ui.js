@@ -3,7 +3,7 @@
 (function () {
   const FC = window.FC;
   const M = FC.M;
-  const VERSION = '0.9.7';
+  const VERSION = '0.9.8';
   FC.VERSION = VERSION;
   const $ = (sel, el) => (el || document).querySelector(sel);
   const h = (tag, attrs, ...kids) => {
@@ -165,7 +165,7 @@
   function onWorkerMsg(ev) {
     const m = ev.data || {};
     if (m.type === 'ready' || m.job !== calc.job) return;
-    if (m.type === 'progress') { setBusy(true, m.i, m.n); return; }
+    if (m.type === 'progress') { setBusy(true, m.i, m.n, m); return; }
     calc.busy = false;
     if (m.type === 'fail') { setBusy(false); toast('Erro no cálculo: ' + m.err); return; }
     if (m.type === 'done') applyResults(m.results, m.errors, performance.now() - calc.t0, m);
@@ -204,10 +204,19 @@
     calc.busy = false; calc.job++; setBusy(false);
     $('#stTime').textContent = 'Cálculo cancelado. Edite a folha para calcular de novo.';
   }
-  function setBusy(on, i, n) {
+  function setBusy(on, i, n, m) {
     const b = $('#stBusy');
-    if (!on) { clearTimeout(calc.showTimer); calc.showTimer = null; b.hidden = true; return; }
-    $('#stBusyTxt').textContent = 'Calculando… região ' + Math.min((i || 0) + 1, n || 1) + ' de ' + (n || 1);
+    if (!on) { clearTimeout(calc.showTimer); calc.showTimer = null; calc.sub = null; b.hidden = true; return; }
+    let txt = 'Calculando… região ' + Math.min((i || 0) + 1, n || 1) + ' de ' + (n || 1);
+    if (m && m.N) {
+      // pontos da curva e tempo que falta (estimado pela velocidade até agora)
+      const key = i + '|' + m.lab, now = performance.now();
+      if (!calc.sub || calc.sub.key !== key || m.k < calc.sub.k0) calc.sub = { key, t0: now, k0: m.k };
+      const done = m.k - calc.sub.k0, dt = now - calc.sub.t0;
+      txt += ' · ' + m.lab + ': ' + (m.k + 1) + ' de ' + m.N + ' pontos';
+      if (done > 0 && dt > 1500) { const rest = ((m.N - m.k) * dt) / done / 1000; txt += rest < 60 ? ' (~' + Math.ceil(rest) + ' s)' : ' (~' + Math.ceil(rest / 60) + ' min)'; }
+    }
+    $('#stBusyTxt').textContent = txt;
     if (b.hidden && !calc.showTimer) calc.showTimer = setTimeout(() => { calc.showTimer = null; if (calc.busy) b.hidden = false; }, 400);
   }
   FC.recalc = recalc;

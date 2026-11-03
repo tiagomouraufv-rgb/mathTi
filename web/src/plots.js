@@ -155,6 +155,7 @@
           for (let k = 0; k < n; k++) {
             const v = t.plog && a > 0 && b > 0 ? a * Math.pow(b / a, k / (n - 1)) : a + ((b - a) * k) / (n - 1);
             ov.set(pv, v); X.push(FC.num(cx.evaluate(ov))); Y.push(FC.num(cy.evaluate(ov)));
+            if (FC._tick) FC._tick(k, n, 'Curva ' + (idx + 1));
           }
           traces.push({ t, xs: X, ys: Y, idx });
         } else if (t.xown) {
@@ -168,12 +169,13 @@
           const lg = (top ? r.x2log : r.xlog) && a > 0 && b > 0;
           const code = S.compileExpr(withDiv(t.expr, t.div));
           const ov = new FC.Overlay(S.scope), X = [], Y = [];
-          for (let k = 0; k < n; k++) { const v = lg ? a * Math.pow(b / a, k / (n - 1)) : a + ((b - a) * k) / (n - 1); ov.set(tv, v); X.push(v); Y.push(FC.num(code.evaluate(ov))); }
+          for (let k = 0; k < n; k++) { const v = lg ? a * Math.pow(b / a, k / (n - 1)) : a + ((b - a) * k) / (n - 1); ov.set(tv, v); X.push(v); Y.push(FC.num(code.evaluate(ov))); if (FC._tick) FC._tick(k, n, 'Curva ' + (idx + 1)); }
           traces.push({ t, xs: X, ys: Y, idx });
         } else {
           const code = S.compileExpr(withDiv(t.expr, t.div));
           const ov = new FC.Overlay(S.scope);
-          const ys = getXs().map((x) => { ov.set(r.xvar, x); return FC.num(code.evaluate(ov)); });
+          const XS = getXs(), N = XS.length;
+          const ys = XS.map((x, k) => { ov.set(r.xvar, x); const y = FC.num(code.evaluate(ov)); if (FC._tick) FC._tick(k, N, 'Curva ' + (idx + 1)); return y; });
           traces.push({ t, ys, idx });
         }
         traces[traces.length - 1].top = t.txpos === 'top';

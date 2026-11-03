@@ -318,12 +318,16 @@
     const ov = new Overlay(scope);
     return (t) => { ov.set(name, t); return code.evaluate(ov); };
   }
+  // limite de avaliações por integral: perto de uma singularidade (ex.: Kramers–Kronig, 1/(E'² − E²))
+  // o método adaptativo dividiria sem parar e o cálculo parecia travado
+  const QB = { n: 0, hit: false };
   function adaptSimpson(f, a, b, eps, whole, fa, fb, fm, depth) {
     const m = (a + b) / 2, lm = (a + m) / 2, rm = (m + b) / 2;
     const flm = f(lm), frm = f(rm);
     const left = ((m - a) / 6) * (fa + 4 * flm + fm), right = ((b - m) / 6) * (fm + 4 * frm + fb);
     const d = left + right - whole;
-    if (depth <= 0 || Math.abs(d) <= 15 * eps) return left + right + d / 15;
+    if (--QB.n <= 0) QB.hit = true;
+    if (depth <= 0 || Math.abs(d) <= 15 * eps || QB.n <= 0) return left + right + d / 15;
     return adaptSimpson(f, a, m, eps / 2, left, fa, fm, flm, depth - 1) + adaptSimpson(f, m, b, eps / 2, right, fm, fb, frm, depth - 1);
   }
   function quad(f, a, b) {
@@ -336,11 +340,16 @@
     }
     // soma de 16 painéis adaptativos (robusto para integrandos oscilantes)
     const P = 16, h = (b - a) / P; let s = 0;
-    for (let k = 0; k < P; k++) {
-      const x0 = a + k * h, x1 = x0 + h, fa = f(x0), fb = f(x1), fm = f((x0 + x1) / 2);
-      const whole = (h / 6) * (fa + 4 * fm + fb);
-      s += adaptSimpson(f, x0, x1, 1e-11 * Math.max(1, Math.abs(whole)), whole, fa, fb, fm, 18);
-    }
+    const savedN = QB.n, savedHit = QB.hit; QB.n = 60000; QB.hit = false; // cada integral tem o seu limite (integrais dentro de integrais também)
+    let hit;
+    try {
+      for (let k = 0; k < P; k++) {
+        const x0 = a + k * h, x1 = x0 + h, fa = f(x0), fb = f(x1), fm = f((x0 + x1) / 2);
+        const whole = (h / 6) * (fa + 4 * fm + fb);
+        s += adaptSimpson(f, x0, x1, 1e-11 * Math.max(1, Math.abs(whole)), whole, fa, fb, fm, 18);
+      }
+    } finally { hit = QB.hit; QB.n = savedN; QB.hit = savedHit; }
+    if (hit && FC.warnings) FC.warnings.add('Uma integral atingiu o limite de passos (singularidade no intervalo?): o valor é aproximado. Para Kramers–Kronig, subtraia o valor no polo (valor principal) ou divida o intervalo no polo.');
     return s;
   }
   function integral(args, _m, scope) {
